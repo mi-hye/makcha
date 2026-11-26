@@ -626,11 +626,12 @@ async function jumpscare(ms = 1000) {
 }
 async function flash() { const w = $('#white'); w.style.transition = 'none'; w.style.opacity = .9; await sleep(60); w.style.transition = 'opacity .5s'; w.style.opacity = 0; }
 async function badEnd(title, text) {
-  await jumpscare(1100);
+  // 얼굴 깜짝 장면은 거울에서 한 번만 쓴다. 여기서는 암전으로 끝낸다.
+  busy(true); $('#fade').classList.add('on'); sfx.thump(); await sleep(900);
   $('#endTitle').textContent = tr(title); $('#endText').innerHTML = tr(text); $('#endBtn').textContent = tr('직전으로 돌아가기');
   $('#end').classList.add('on');
   await new Promise(r => $('#endBtn').onclick = r);
-  sfx.click(); $('#end').classList.remove('on');
+  sfx.click(); $('#end').classList.remove('on'); $('#fade').classList.remove('on'); busy(false);
 }
 
 /* ───────── 장면 ───────── */
@@ -908,7 +909,7 @@ async function trueEnd() {
   await say('이번에는 계단이 있었다.', '휴대폰 시계가 다시 움직이기 시작한다. 04:17.', '첫차가 다니기 전의, 조용한 새벽이었다.');
   $('#endTitle').textContent = tr('막차 — 끝'); $('#endText').innerHTML = tr('플레이해 주셔서 감사합니다.'); $('#endBtn').textContent = tr('처음으로');
   $('#end').classList.add('on', 'dawn'); busy(false);
-  const t = setTimeout(async () => { sfx.buzz(); $('#end').classList.remove('dawn'); $('#endText').innerHTML = '<span style="color:#c44">' + tr('새 메시지 · 발신자 표시 없음') + '</span><br><br>' + tr('「다음 막차에서 또 봐」'); await sleep(1500); await jumpscare(600); }, 7000);
+  const t = setTimeout(async () => { sfx.buzz(); $('#end').classList.remove('dawn'); $('#endText').innerHTML = '<span style="color:#c44">' + tr('새 메시지 · 발신자 표시 없음') + '</span><br><br>' + tr('「다음 막차에서 또 봐」'); }, 7000);
   $('#endBtn').onclick = () => { clearTimeout(t); location.reload(); };
 }
 async function overlayTimed(html, ms) { $('#ovBody').innerHTML = html; $('#ov').classList.add('on'); $('#ovClose').style.display = 'none'; await sleep(ms); $('#ov').classList.remove('on'); $('#ovClose').style.display = ''; $('#ovBody').innerHTML = ''; }

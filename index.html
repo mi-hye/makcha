@@ -1,0 +1,912 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>막차</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: #000; color: #d8d4c8; overflow: hidden;
+    font-family: Gulim, "굴림", Dotum, "돋움", AppleGothic, sans-serif; -webkit-font-smoothing: none; font-smooth: never; }
+  body { display: flex; align-items: center; justify-content: center; user-select: none; -webkit-user-select: none; }
+
+  #stage { position: relative; width: min(100vw, 150vh, 960px); aspect-ratio: 3 / 2; background: #000; overflow: hidden; }
+  #stage.shake { animation: shake .08s infinite; }
+  @keyframes shake { 0% { transform: translate(-1.2%, .8%) scale(1.04); } 50% { transform: translate(1.4%, -1%) scale(1.06); } 100% { transform: translate(-.6%, 1.2%) scale(1.04); } }
+
+  #bg, #bg2 { position: absolute; inset: 0; background-size: cover; background-position: center; transition: opacity .6s; }
+  #bg2 { opacity: 0; }
+  #bg, #bg2, #scare { filter: contrast(1.28) saturate(.42) brightness(.9); }
+  #stage:fullscreen { width: 100vw; }
+  #world { position: absolute; inset: 0; transition: filter .5s; }
+  #world.flicker { animation: flicker 3.7s infinite; }
+  #world.dark { filter: brightness(.25); }
+  @keyframes flicker { 0%, 100% { filter: brightness(1); } 41% { filter: brightness(1); } 42% { filter: brightness(.55); } 43% { filter: brightness(1); } 77% { filter: brightness(.95); } 78% { filter: brightness(.4); } 79.5% { filter: brightness(1); } 80% { filter: brightness(.7); } 81% { filter: brightness(1); } }
+
+  /* 귀신·손 등 합성 레이어 */
+  #fx { position: absolute; inset: 0; pointer-events: none; }
+  #fx img { position: absolute; mix-blend-mode: screen; transition: opacity .8s, transform 1.2s; }
+  #mirrorText { position: absolute; left: 30%; top: 30%; width: 40%; text-align: center; font-size: clamp(16px, 4.2vw, 46px);
+    font-family: "Nanum Pen Script", "Apple SD Gothic Neo", cursive; color: rgba(225, 235, 230, .0); letter-spacing: .2em;
+    filter: blur(1.2px); transform: rotate(-3deg); transition: color 3s; pointer-events: none; }
+  #mirrorText.on { color: rgba(225, 235, 230, .62); }
+  #fog { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 38%, rgba(200, 215, 210, .28), transparent 55%); opacity: 0; transition: opacity 3s; pointer-events: none; }
+  #fog.on { opacity: 1; }
+
+  .hot { position: absolute; cursor: pointer; }
+  .hot::after { content: attr(data-label); position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    font-size: clamp(11px, 1.5vw, 15px); color: #fff; background: rgba(0, 0, 0, .6); padding: .25em .7em; border-radius: 2px;
+    white-space: nowrap; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  .hot:hover::after { opacity: 1; }
+  .hot:not(.nolabel)::after { opacity: .8; top: calc(50% + 1.5em); }
+  .hot::before { content: ""; position: absolute; left: 50%; top: 50%; width: 9px; height: 9px; margin: -4.5px; border-radius: 50%; background: rgba(255, 255, 255, .8); box-shadow: 0 0 9px 4px rgba(255, 255, 255, .3); animation: pulse 1.8s infinite; pointer-events: none; }
+  .hot:hover::before, .hot.nolabel::before { display: none; }
+  @keyframes pulse { 50% { opacity: .25; transform: scale(.7); } }
+  .hot.target::before { width: 13px; height: 13px; margin: -6.5px; background: #f33; box-shadow: 0 0 10px 5px rgba(255, 40, 40, .45); }
+  .hot.target::after { opacity: 1 !important; background: #900; color: #fff; content: '▶ ' attr(data-label); }
+  .nav.target { border-color: #f33; color: #fff; box-shadow: 0 0 8px 2px rgba(255, 40, 40, .5); }
+  #goal { position: absolute; left: 50%; top: 5.6%; transform: translateX(-50%); font-size: clamp(11px, 1.5vw, 15px); color: #d9b1a4; background: rgba(0, 0, 0, .55); padding: .2em .9em; pointer-events: none; white-space: nowrap; }
+  #goal:empty { display: none; }
+  body.debug .hot { outline: 1px dashed #f33; background: rgba(255, 0, 0, .12); }
+  body.debug .hot::after { opacity: 1; }
+
+  .nav { position: absolute; cursor: pointer; padding: .5em 1em; font-size: clamp(12px, 1.6vw, 17px); color: #cfcab8;
+    background: #000; border: 1px solid #777; }
+  .nav:hover { background: #600; color: #fff; }
+  .nav.left { left: 1.5%; top: 46%; } .nav.right { right: 1.5%; top: 46%; }
+  .nav.down { left: 50%; bottom: 4%; transform: translateX(-50%); } .nav.up { left: 50%; top: 9%; transform: translateX(-50%); }
+  .nav.left2 { left: 1.5%; top: 60%; }
+
+  #grain { position: absolute; inset: -50%; pointer-events: none; opacity: .22; animation: grain .5s steps(4) infinite;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/></filter><rect width='200' height='200' filter='url(%23n)'/></svg>"); }
+  @keyframes grain { 0% { transform: translate(0, 0); } 25% { transform: translate(-4%, 3%); } 50% { transform: translate(3%, -5%); } 75% { transform: translate(-2%, -3%); } 100% { transform: translate(4%, 2%); } }
+  #vig { position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(rgba(0, 0, 0, .2) 0 1px, transparent 1px 3px), radial-gradient(ellipse at center, transparent 45%, rgba(0, 0, 0, .78) 100%); }
+  #fade { position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity .45s; }
+  #fade.on { opacity: 1; }
+  #white { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+
+  /* HUD */
+  #hud { position: absolute; left: 0; right: 0; top: 0; display: flex; justify-content: space-between; align-items: flex-start; padding: 1.2% 1.5%; pointer-events: none; }
+  #inv { display: flex; gap: .5em; pointer-events: auto; }
+  .item { padding: .35em .8em; font-size: clamp(11px, 1.5vw, 15px); background: rgba(0, 0, 0, .6); border: 1px solid rgba(207, 202, 184, .3); cursor: pointer; }
+  .item:hover { border-color: #b33; color: #fff; }
+  #tools { display: flex; gap: .5em; pointer-events: auto; }
+  #tools button, #btnBag { background: rgba(0, 0, 0, .6); color: #cfcab8; border: 1px solid rgba(207, 202, 184, .3); padding: .35em .7em; font: inherit; font-size: clamp(11px, 1.4vw, 14px); cursor: pointer; }
+  #hud { z-index: 5; align-items: flex-start; }
+  body:not(.playing) #inv, body:not(.playing) #btnHint, body:not(.playing) #btnFull { visibility: hidden; }
+  #title .tOpt { left: 7%; top: 82%; margin: 0; padding: 0; border: 0; background: none; color: #999; font-size: clamp(11px, 1.5vw, 14px); letter-spacing: 0; }
+  #title .tOpt:hover { background: none; color: #fff; }
+  #loc { display: none; }
+  #goal { top: 1.8% !important; height: 2.4em; line-height: calc(2.4em - 2px); padding: 0 1em !important; font-size: clamp(11px, 1.4vw, 14px) !important; background: #000 !important; border: 1px solid #555; color: #cfcab8 !important; max-width: 70%; overflow: hidden; text-overflow: ellipsis; }
+  #goal b { color: #d9a090; font-weight: 400; }
+  #tools { align-items: flex-start; }
+  #scare, #white { z-index: 6; }
+  #tools button, #btnBag { width: 2.4em; height: 2.4em; padding: .45em !important; display: flex; align-items: center; justify-content: center; }
+  #tools svg, #btnBag svg { width: 100%; height: 100%; }
+  #btnMute .off { display: none; } #btnMute.muted .off { display: inline; } #btnMute.muted .on { display: none; } #btnMute.muted { color: #777; }
+  #inv { position: relative; display: block; }
+  #btnBag { position: relative; }
+  #btnHint.nudge { border-color: #f33; background: #a00; color: #fff; }
+  #btnBag.new { border-color: #f33; background: #a00; color: #fff; }
+  #bagN { position: absolute; right: -.55em; top: -.55em; min-width: 1.3em; line-height: 1.3em; background: #900; color: #fff; font-size: .8em; text-align: center; }
+  #bagN:empty { display: none; }
+  #bagList { display: none; position: absolute; left: 0; top: calc(100% + 6px); background: #000; border: 1px solid #999; padding: 0; min-width: 10em; }
+  #inv.open #bagList { display: block; }
+  #bagList .item { display: block; background: none; border: 0; border-bottom: 1px dotted #555; padding: 8px 10px; white-space: nowrap; }
+  #bagList .item:last-child { border-bottom: 0; }
+  #bagList .item:hover { background: #600; }
+  #bagList .empty { padding: 8px 10px; color: #777; font-size: clamp(11px, 1.5vw, 15px); white-space: nowrap; }
+  #bagList .cap { padding: 6px 10px; color: #999; font-size: clamp(10px, 1.2vw, 12px); border-bottom: 1px solid #555; }
+  #ov { z-index: 7; } #end { z-index: 6; }
+  .poster h2 { white-space: nowrap; font-size: 1.7em !important; letter-spacing: .08em !important; }
+  #loc { position: absolute; left: 50%; top: 1.6%; transform: translateX(-50%); font-size: clamp(11px, 1.4vw, 14px); color: #999; pointer-events: none; }
+
+  /* 대사창 */
+  #dlg { position: absolute; left: 4%; right: 4%; bottom: 3%; min-height: 13%; padding: 1em 1.2em; background: #000;
+    border: 1px solid #999; font-size: clamp(13px, 2vw, 21px); line-height: 1.6; display: none; cursor: pointer; white-space: pre-wrap; }
+  #dlg.on { display: block; }
+  #dlg .more { position: absolute; right: 1em; bottom: .5em; font-size: .7em; opacity: .6; animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  #choices { display: flex; gap: .8em; margin-top: .8em; flex-wrap: wrap; }
+  #choices button { background: #111; color: #d8d4c8; border: 1px solid rgba(207, 202, 184, .4); padding: .45em 1.1em; font: inherit; font-size: .9em; cursor: pointer; }
+  #choices button:hover { background: #6a1414; color: #fff; }
+  #blocker { position: absolute; inset: 0; display: none; }
+  #blocker.on { display: block; }
+
+  /* 오버레이 (전단, 휴대폰, 키패드) */
+  #ov { position: absolute; inset: 0; background: rgba(0, 0, 0, .82); display: none; align-items: center; justify-content: center; }
+  #ov.on { display: flex; }
+  #ovBody { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+  #ovClose { position: absolute; right: 3%; top: 4%; width: 2.4em; height: 2.4em; padding: .5em; background: #000; border: 1px solid #999; color: #d8d4c8; font: inherit; font-size: clamp(11px, 1.4vw, 14px); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  #ovClose:hover { background: #600; color: #fff; }
+  #ovClose svg { width: 100%; height: 100%; }
+
+  .poster { width: 34%; aspect-ratio: 3 / 4.3; background: #d9d2b8; color: #2a241b; padding: 3% 3%; transform: rotate(-1.5deg); text-align: center;
+    box-shadow: 0 0 60px rgba(0, 0, 0, .9); font-size: clamp(9px, 1.35vw, 15px); line-height: 1.55; filter: sepia(.35) contrast(.95); position: relative; }
+  .poster h2 { font-size: 2.1em; letter-spacing: .25em; color: #7a1010; border-bottom: 2px solid #7a1010; padding-bottom: .2em; margin-bottom: .5em; }
+  .poster img { width: 46%; aspect-ratio: 3 / 4; object-fit: cover; filter: grayscale(.7) contrast(.9); border: 1px solid #554; }
+  .poster .name { font-size: 1.6em; font-weight: 700; margin: .3em 0; letter-spacing: .3em; }
+  .poster .smudge { background: #3a342a; color: transparent; filter: blur(2px); border-radius: 40%; }
+  .poster .tag { position: absolute; left: 50%; top: 56.5%; transform: translateX(-50%) rotate(2deg); background: #f4f1e6; border: 1px solid #333; padding: .1em 1em;
+    font-size: 1.5em; font-weight: 700; letter-spacing: .4em; box-shadow: 2px 3px 6px rgba(0, 0, 0, .5); }
+
+  .phone { width: 22%; aspect-ratio: 9 / 17; background: #0b0c0e; border: 3px solid #26282c; border-radius: 9%; padding: 4% 2%; font-size: clamp(8px, 1.15vw, 13px); display: flex; flex-direction: column; gap: .6em; box-shadow: 0 0 50px #000; }
+  .phone .bar { display: flex; justify-content: space-between; opacity: .7; font-size: .85em; }
+  .phone .time { font-size: 3em; text-align: center; font-weight: 200; margin: .2em 0; }
+  .phone .msg { background: #1c1e22; border-radius: .6em; padding: .6em .8em; line-height: 1.5; }
+  .phone .msg b { display: block; font-size: .85em; opacity: .6; font-weight: 400; }
+  .phone .msg.red { background: #3a0c0c; color: #ffd9d9; }
+
+  .keypad { background: #17181a; border: 1px solid #444; padding: 1.6em; text-align: center; box-shadow: 0 0 50px #000; }
+  .keypad .num { font-size: .9em; opacity: .7; letter-spacing: .3em; margin-bottom: .6em; }
+  .keypad .disp { font-family: Menlo, monospace; font-size: 2em; letter-spacing: .4em; background: #050805; color: #7dff8a; padding: .2em .5em; margin-bottom: .7em; min-height: 1.6em; }
+  .keypad .keys { display: grid; grid-template-columns: repeat(3, 3.2em); gap: .4em; justify-content: center; }
+  .keypad button { height: 2.6em; background: #2a2c30; color: #ddd; border: 1px solid #555; font: inherit; font-size: 1.1em; cursor: pointer; }
+  .keypad button:active { background: #6a1414; }
+
+  /* 깜짝 */
+  #scare { position: absolute; inset: 0; background: #000 center / cover no-repeat; display: none; }
+  #scare.on { display: block; animation: zoom .9s ease-out; }
+  @keyframes zoom { 0% { transform: scale(.7); filter: brightness(2.4) contrast(1.4); } 12% { transform: scale(1.15); } 100% { transform: scale(1.35); filter: brightness(1) contrast(1.2); } }
+
+  /* 화면들 */
+  .screen { position: absolute; inset: 0; background: #000; display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 1.2em; padding: 6%; }
+  .screen.on { display: flex; }
+  .screen p { font-size: clamp(12px, 1.8vw, 18px); line-height: 1.9; color: #8d897c; }
+  .screen .red { color: #a33; }
+  .screen button { margin-top: .6em; background: none; border: 1px solid #7c776a; color: #d8d4c8; padding: .7em 2.6em; font: inherit; font-size: clamp(13px, 1.8vw, 17px); cursor: pointer; }
+  .screen button:hover { background: #6a1414; border-color: #a33; }
+  #title { display: none; text-align: left; }
+  #title.on { display: block; }
+  #title > * { position: absolute; }
+  .tPhoto { left: 7%; top: 11%; width: 47%; aspect-ratio: 3 / 2; background: center / cover no-repeat; border: 1px solid #666; filter: grayscale(1) contrast(1.5) brightness(.8); }
+  .tName { right: 12%; top: 10%; writing-mode: vertical-rl; font-family: AppleMyungjo, Batang, "바탕", serif; font-size: clamp(44px, 11vw, 104px); color: #e6e6e6; line-height: 1; animation: jit 2.3s steps(1) infinite; }
+  .tSub { right: 30%; top: 13%; writing-mode: vertical-rl; font-family: AppleMyungjo, Batang, serif; font-size: clamp(11px, 1.6vw, 15px); color: #888; }
+  @keyframes jit { 0%, 100% { transform: none; } 91% { transform: translate(2px, -1px); } 93% { transform: translate(-2px, 1px); } 95% { transform: none; } }
+  #title .tStart { left: 7%; top: 74%; margin: 0; padding: 0; border: 0; background: none; color: #fff; font-size: clamp(14px, 2vw, 19px); letter-spacing: 0; animation: blink 1.2s steps(1) infinite; }
+  #title .tStart:hover { background: none; color: #e00; animation: none; }
+  .tWarn { right: 4%; bottom: 5%; width: 38%; color: #c00; font-size: clamp(10px, 1.35vw, 13px); line-height: 1.7; }
+  .tVer { left: 7%; bottom: 5%; color: #555; font-size: clamp(10px, 1.2vw, 12px); }
+  #end.dawn { background: rgba(0, 0, 0, .5); }
+  #end h2 { font-family: AppleMyungjo, Batang, serif; font-size: clamp(20px, 4vw, 44px); font-weight: 400; }
+
+  /* ───── 세로로 든 휴대폰 ───── */
+  body { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+  @media (orientation: portrait) {
+    :root { --top: max(7vh, env(safe-area-inset-top, 0px)); --t: calc(var(--top) + 52px); }
+    body { align-items: flex-start; padding-top: var(--top); }
+    #stage { width: 100vw; }
+    #stage.shake { animation: none; }
+    #tools button, #btnBag { font-size: 15px; }
+    #bagList .item, #bagList .empty { font-size: 15px; }
+    #goal { position: fixed; top: calc(var(--top) + 66.67vw + 10px) !important; width: max-content; max-width: 92%; height: auto; line-height: 1.5; padding: .45em 1em !important; font-size: 13px !important; white-space: normal; text-align: center; }
+    .nav { font-size: 14px; padding: .55em .9em; }
+    .hot::after { font-size: 12px; }
+    #blocker, #ov, #scare, #white, #fade, .screen { position: fixed; }
+    #dlg { position: fixed; left: 3vw; right: 3vw; bottom: max(3vh, env(safe-area-inset-bottom, 0px)); min-height: 22vh; font-size: 16px; }
+    #choices button { padding: .7em 1.1em; font-size: 15px; }
+    .poster { width: 80%; font-size: 12px; }
+    .phone { width: 58%; font-size: 12px; }
+    .keypad { font-size: 17px; }
+    #ovClose { font-size: 15px; top: max(3vh, env(safe-area-inset-top, 0px)); }
+    .tPhoto { left: 7%; top: var(--t); width: 86%; }
+    .tSub { writing-mode: horizontal-tb; left: 7%; right: auto; top: calc(var(--t) + 61vw); font-size: 12px; }
+    .tName { right: 8%; top: calc(var(--t) + 60vw); font-size: 22vw; }
+    #title .tStart { top: calc(var(--t) + 72vw); font-size: 20px; }
+    #title .tOpt { top: calc(var(--t) + 84vw); font-size: 14px; }
+    .tWarn { left: 7%; right: 7%; width: auto; bottom: 8%; font-size: 12px; }
+    .tVer { bottom: 3%; }
+  }
+
+  /* ───── 언어 ───── */
+  .poster .tag { white-space: nowrap; }
+  .tLang { position: absolute; left: 7%; top: 89%; display: flex; gap: 1.1em; }
+  #title .tLang button { margin: 0; padding: 0; border: 0; background: none; color: #777; font-size: clamp(11px, 1.5vw, 14px); letter-spacing: 0; }
+  #title .tLang button.cur { color: #fff; text-decoration: underline; }
+  html[lang=en] body { font-family: Tahoma, Verdana, Geneva, sans-serif; }
+  html[lang=ja] body { font-family: "MS PGothic", "MS Pゴシック", Osaka, "Hiragino Kaku Gothic ProN", Meiryo, sans-serif; }
+  html[lang=en] .tSub { writing-mode: horizontal-tb; right: 26%; top: 60%; max-width: 30%; text-align: right; font-family: Georgia, serif; }
+  html[lang=en] #mirrorText, html[lang=ja] #mirrorText { letter-spacing: .08em; }
+  html[lang=ja] .tSub, html[lang=ja] #end h2 { font-family: "Hiragino Mincho ProN", "MS PMincho", "Yu Mincho", serif; }
+  html[lang=en] #end h2 { font-family: Georgia, "Times New Roman", serif; }
+  @media (orientation: portrait) {
+    .tLang { top: calc(var(--t) + 95vw); }
+    #title .tLang button { font-size: 14px; }
+    html[lang=en] .tSub { right: auto; max-width: 60%; text-align: left; top: calc(var(--t) + 61vw); }
+  }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="world">
+    <div id="bg"></div><div id="bg2"></div>
+    <div id="fog"></div>
+    <div id="mirrorText">내가 사라진 날</div>
+    <div id="fx"></div>
+  </div>
+  <div id="vig"></div>
+  <div id="grain"></div>
+  <div id="hots"></div>
+  <div id="loc"></div>
+  <div id="goal"></div>
+  <div id="hud"><div id="inv"><button id="btnBag" title="가방"><svg viewBox="0 0 16 16"><path d="M6 6.5V5a2 2 0 0 1 4 0v1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M3 6.5h10l1.5 8h-13z" fill="currentColor"/><path d="M2.6 9.5h10.8" stroke="#000" stroke-width="1"/><rect x="4.5" y="8.5" width="1.5" height="2.5" fill="#000"/><rect x="10" y="8.5" width="1.5" height="2.5" fill="#000"/></svg><span id="bagN"></span></button><div id="bagList"></div></div><div id="tools">
+    <button id="btnHint" title="힌트"><svg viewBox="0 0 16 16"><path d="M5 6a3 3 0 1 1 4.5 2.6C8.5 9.2 8 9.8 8 11" fill="none" stroke="currentColor" stroke-width="2"/><rect x="7" y="12.5" width="2" height="2" fill="currentColor"/></svg></button>
+    <button id="btnMute" title="소리 끄기"><svg viewBox="0 0 16 16"><path d="M1 6h3l4-3v10l-4-3H1z" fill="currentColor"/><g class="on" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10.5 5.5a3.5 3.5 0 0 1 0 5"/><path d="M12.5 3.5a6.5 6.5 0 0 1 0 9"/></g><path class="off" d="M10.5 5.5l4.5 5m0-5l-4.5 5" fill="none" stroke="#e33" stroke-width="1.8"/></svg></button>
+    <button id="btnFull" title="전체화면"><svg viewBox="0 0 16 16"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" fill="none" stroke="currentColor" stroke-width="2"/></svg></button>
+  </div></div>
+  <div id="blocker"></div>
+  <div id="dlg"><span id="dlgText"></span><div id="choices"></div><span class="more">▼</span></div>
+  <div id="ov"><div id="ovBody"></div><button id="ovClose" title="닫기"><svg viewBox="0 0 16 16"><path d="M3 3l10 10M13 3L3 13" fill="none" stroke="currentColor" stroke-width="2"/></svg></button></div>
+  <div id="fade"></div>
+  <div id="scare"></div>
+  <div id="white"></div>
+
+  <div id="end" class="screen">
+    <h2 id="endTitle"></h2>
+    <p id="endText"></p>
+    <button id="endBtn">돌아가기</button>
+  </div>
+
+  <div id="title" class="screen on">
+    <div class="tPhoto"></div>
+    <div class="tName">막차</div>
+    <div class="tSub">눈을 떠 보니 노선도에 없는 역이었다</div>
+    <button id="btnStart" class="tStart">▶ 게임시작</button>
+    <button id="btnTame" class="tOpt"></button>
+    <div id="tLang" class="tLang"><button data-l="ko">한국어</button><button data-l="en">English</button><button data-l="ja">日本語</button></div>
+    <div class="tWarn">※ 경고 ※<br>갑자기 놀라는 장면과 큰 소리가 나옵니다.<br>심장이 약하신 분, 임산부, 노약자는 하지 마세요.<br>스피커를 켜고 불을 끄고 하세요.</div>
+    <div class="tVer">ver 1.0</div>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const A = n => `assets/${n}.jpg`;
+const IMGS = ['platform','platform_train','tunnel','stairs','concourse','lockers','restroom','train','exit_dawn','wall','ghost_face','hand','portrait','train_g1','train_g2','train_g3','stairs_g','tunnel_g','restroom_g','platform_g'];
+IMGS.forEach(n => { const i = new Image(); i.src = A(n); });
+document.querySelector('.tPhoto').style.backgroundImage = `url(${A('platform')})`;
+if (location.search.includes('debug')) document.body.classList.add('debug');
+
+/* ───────── 소리 (전부 WebAudio 합성) ───────── */
+const store = { get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} } };
+let ac, master, muted = store.get('makcha_mute') === '1', tame = store.get('makcha_tame') === '1';
+/* ───────── 번역 (한국어 원문 → [영어, 일본어]) ───────── */
+const TR = {
+  // 타이틀 · 버튼
+  '눈을 떠 보니 노선도에 없는 역이었다': ['I woke up at a station that isn\'t on the map', '目を覚ますと、路線図にない駅だった'],
+  '▶ 게임시작': ['▶ START', '▶ ゲームスタート'],
+  '순한 모드 (깜짝 장면·비명 끄기)': ['Mild mode (no jump scares or screams)', 'マイルドモード（びっくり演出・悲鳴オフ）'],
+  '※ 경고 ※<br>갑자기 놀라는 장면과 큰 소리가 나옵니다.<br>심장이 약하신 분, 임산부, 노약자는 하지 마세요.<br>스피커를 켜고 불을 끄고 하세요.': [
+    '※ WARNING ※<br>Contains sudden jump scares and loud noises.<br>Not for those with heart conditions or who are easily frightened.<br>Turn your sound on. Turn the lights off.',
+    '※ 警告 ※<br>突然驚かす演出と大きな音があります。<br>心臓の弱い方、妊娠中の方はご遠慮ください。<br>音を出して、部屋を暗くしてお楽しみください。'],
+  '가방': ['Bag', 'かばん'], '힌트': ['Hint', 'ヒント'], '소리 끄기': ['Mute', '音を消す'], '소리 켜기': ['Unmute', '音を出す'], '전체화면': ['Fullscreen', '全画面'], '닫기': ['Close', '閉じる'],
+  '가방 — 눌러서 확인': ['Bag — tap to look', 'かばん — 押して確認'], '비어 있음': ['Empty', '空っぽ'],
+  '돌아가기': ['Back', '戻る'], '직전으로 돌아가기': ['Go back a moment', '直前に戻る'], '처음으로': ['Back to title', 'タイトルへ'],
+  '목표: ': ['Goal: ', '目標：'],
+
+  // 장소
+  '무영역': ['Muyeong Stn.', 'ムヨン駅'],
+  '승강장': ['Platform', 'ホーム'], '승강장 끝': ['End of the platform', 'ホームの端'], '계단': ['Stairs', '階段'], '대합실': ['Concourse', 'コンコース'],
+  '출구': ['Exit', '出口'],
+  '벤치': ['Bench', 'ベンチ'], '게시판': ['Notice board', '掲示板'], '열차에 탄다': ['Board the train', '電車に乗る'], '터널 쪽': ['Toward the tunnel', 'トンネルの方'],
+  '어둠 속을 들여다본다': ['Look into the dark', '闇の中をのぞく'], '역무실': ['Station office', '駅務室'], '물품보관함': ['Lockers', 'コインロッカー'],
+  '출구 셔터': ['Exit shutter', '出口のシャッター'], '보관함': ['Locker', 'ロッカー'], '거울': ['Mirror', '鏡'], '세면대': ['Sink', '洗面台'], '화장실': ['Restroom', 'トイレ'],
+  '계단으로 ▼': ['Stairs ▼', '階段へ ▼'], '돌아선다 ▼': ['Turn back ▼', '引き返す ▼'], '▲ 대합실로': ['▲ Concourse', '▲ コンコースへ'], '승강장으로 ▼': ['Platform ▼', 'ホームへ ▼'],
+  '◀ 화장실': ['◀ Restroom', '◀ トイレ'], '물러난다 ▼': ['Step back ▼', '離れる ▼'], '나간다 ▼': ['Leave ▼', '出る ▼'],
+
+  // 목표
+  '주변을 둘러본다': ['Look around', '周りを見てみる'],
+  '위층으로 올라가 본다': ['Try going upstairs', '上の階に行ってみる'],
+  '나갈 방법을 찾는다': ['Find a way out', '外に出る方法を探す'],
+  '보관함 13번의 비밀번호를 알아낸다': ['Find the code for locker 13', 'ロッカー13番の暗証番号を突き止める'],
+  '「내가 사라진 날」이 언제인지 알아낸다': ['Find out when "the day I vanished" was', '「わたしが消えた日」がいつなのか突き止める'],
+  '보관함 13번을 연다': ['Open locker 13', 'ロッカー13番を開ける'],
+  '열쇠를 쓸 곳을 찾는다': ['Find where the key goes', '鍵を使う場所を探す'],
+  '휴대폰이 울렸다': ['Your phone buzzed', '携帯が鳴った'],
+  '열차를 타지 않고 나갈 방법을 찾는다': ['Find a way out without boarding the train', '電車に乗らずに出る方法を探す'],
+
+  // 귀띔
+  '어디선가 진동 소리가 난다. 가까운 곳부터 살펴보자.': ['Something is vibrating nearby. Start with what\'s close.', 'どこかで振動音がする。近いところから調べてみよう。'],
+  '불 꺼진 방 유리창에 뭔가 붙어 있는 것 같다.': ['There seems to be something stuck on the window of the dark room.', '明かりの消えた部屋の窓に、何か貼ってあるようだ。'],
+  '승강장에는 출구가 없다. 위로 올라가 보자.': ['There\'s no exit on the platform. Try going up.', 'ホームに出口はない。上に行ってみよう。'],
+  '「그 애」의 흔적이 남아 있을 만한 곳……': ['Somewhere "that girl" might have left a trace...', '「あの子」の痕跡が残っていそうな場所……'],
+  '대합실에 아직 제대로 살펴보지 않은 곳이 있다.': ['There\'s a place off the concourse you haven\'t really looked at yet.', 'コンコースに、まだちゃんと調べていない場所がある。'],
+  '사라진 사람을 찾는 종이를 어디선가 본 것 같다.': ['You saw a notice about a missing person somewhere.', '行方不明の人を捜す貼り紙を、どこかで見た気がする。'],
+  '날짜를 네 자리 숫자로 바꿔 보자.': ['Turn the date into four digits.', '日付を四桁の数字にしてみよう。'],
+  '열쇠에는 「출구」라고 적혀 있다.': ['The key is labeled "EXIT".', '鍵には「出口」と書いてある。'],
+  '아까 휴대폰이 울렸었다.': ['Your phone buzzed a moment ago.', 'さっき携帯が鳴っていた。'],
+  '문자에는 「이름」을 돌려 달라고 적혀 있었다.': ['The message asked for a "name" back.', 'メッセージには「名前」を返してと書いてあった。'],
+  '이름이 지워져 있던 것을 어디선가 봤다.': ['You\'ve seen a name scratched out somewhere.', '名前が消されていたものを、どこかで見た。'],
+  '(그래도 모르겠으면 [?]를 한 번 더 누르자.)': ['(Still stuck? Tap [?] once more.)', '（それでも分からなければ、もう一度 [?] を押そう。）'],
+  '(가야 할 곳을 빨간 점으로 표시했다.)': ['(Where to go is now marked with a red dot.)', '（行くべき場所に赤い点を付けた。）'],
+
+  // 힌트
+  '승강장 오른쪽 벤치를 눌러 보자.': ['Tap the bench on the right side of the platform.', 'ホーム右側のベンチを押してみよう。'],
+  '하얗게 깜빡이는 점이 있는 곳은 전부 조사할 수 있다.': ['Anything with a blinking white dot can be examined.', '白く点滅する点がある場所は、すべて調べられる。'],
+  '[계단으로] → [대합실로] 올라가서, 왼쪽 역무실 유리창을 살펴보자.': ['Go [Stairs] → [Concourse], then check the station office window on the left.', '[階段へ] → [コンコースへ] と上がり、左の駅務室の窓を調べよう。'],
+  '비밀번호는 「그 애」가 안다고 했다.': ['The note said "that girl" knows the code.', '暗証番号は「あの子」が知っているという。'],
+  '대합실 왼쪽 [화장실]에 들어가 세면대 물을 틀어 보자.': ['Enter the [Restroom] left of the concourse and turn on the sink.', 'コンコース左の [トイレ] に入り、洗面台の水を出してみよう。'],
+  '거울의 글씨는 「내가 사라진 날」.': ['The mirror says "THE DAY I VANISHED".', '鏡の文字は「わたしが消えた日」。'],
+  '승강장 게시판에 붙은 전단에 날짜가 적혀 있을 것이다.': ['The flyer on the platform notice board should have a date.', 'ホームの掲示板の貼り紙に、日付が書いてあるはずだ。'],
+  '전단의 실종 날짜는 4월 17일.': ['The flyer says she went missing on April 17.', '貼り紙の失踪日は4月17日。'],
+  '월과 일을 네 자리 숫자로 바꿔서 보관함 13번에 넣어 보자.': ['Write month and day as four digits and enter it at locker 13.', '月と日を四桁の数字にして、ロッカー13番に入れてみよう。'],
+  '대합실 정면의 [출구 셔터]에 열쇠를 써 보자.': ['Use the key on the [Exit shutter] straight ahead in the concourse.', 'コンコース正面の [出口のシャッター] に鍵を使ってみよう。'],
+  '휴대폰 문자를 확인해 보자. 열차는 타면 안 된다.': ['Check the messages on your phone. Do not board the train.', '携帯のメッセージを確認しよう。電車に乗ってはいけない。'],
+  '「내 이름 돌려줘」 — 이름이 지워져 있던 곳은 승강장 게시판의 전단이다.': ['"Give me back my name" — the name was scratched off the flyer on the platform notice board.', '「わたしの名前を返して」— 名前が消されていたのは、ホームの掲示板の貼り紙だ。'],
+
+  // 소지품 · 휴대폰
+  '휴대폰': ['Phone', '携帯'], '셔터 열쇠': ['Shutter key', 'シャッターの鍵'], '이름표': ['Name tag', '名札'],
+  '……이름을 돌려 달라고?': ['...Give back a name?', '……名前を、返して？'],
+  '녹슨 열쇠. 손잡이에 「출구」라고 적힌 테이프가 붙어 있다.': ['A rusty key. A strip of tape on it reads "EXIT".', '錆びた鍵。持ち手に「出口」と書かれたテープが貼ってある。'],
+  '교복에 다는 플라스틱 이름표.': ['A plastic name tag, the kind pinned to a school uniform.', '制服に付けるプラスチックの名札。'],
+  '「윤 서 하」': ['"YOON SEO-HA"', '「ユン・ソハ」'],
+  '…뒷면 옷핀에 머리카락 몇 가닥이 엉켜 있다.': ['...A few strands of hair are tangled in the pin on the back.', '……裏の安全ピンに、髪の毛が何本か絡まっている。'],
+  '엄마 · 오후 11:52': ['Mom · 11:52 PM', '母 · 23:52'], '어디니? 막차 탔어?': ['Where are you? Did you make the last train?', '今どこ？ 終電乗れた？'],
+  '발신자 표시 없음 · 01:13': ['No Caller ID · 01:13', '非通知 · 01:13'],
+  '거기로는 못 나가': ['you can\'t get out that way', 'そこからは出られない'],
+  '타지 마<br>내 이름 돌려줘': ['don\'t get on<br>give me back my name', '乗らないで<br>わたしの名前を返して'],
+  '서비스 없음': ['No Service', '圏外'], '시계가 넘어가지 않는다.': ['The clock won\'t move forward.', '時計が進まない。'],
+
+  // 장면 진입
+  '열차가 문을 연 채 서 있다. 안에는 아무도 없다.': ['A train is standing there with its doors open. No one is inside.', '電車がドアを開けたまま停まっている。中には誰もいない。'],
+  '……타도 되는 걸까.': ['...Is it safe to get on?', '……乗っても、いいのだろうか。'],
+  '대합실에도 아무도 없다.': ['No one in the concourse either.', 'コンコースにも誰もいない。'],
+  '개찰구는 전원이 꺼져 있고, 출구는 셔터로 막혀 있다.': ['The ticket gates are powered off, and the exit is sealed by a shutter.', '改札は電源が落ちていて、出口はシャッターで塞がれている。'],
+  '수도꼭지에서 물이 한 방울씩 떨어지고 있다.': ['Water drips from the tap, one drop at a time.', '蛇口から、水が一滴ずつ落ちている。'],
+  '……방금, 계단 위에.': ['...Just now, at the top of the stairs.', '……今、階段の上に。'],
+
+  // 도입
+  '…….': ['.......', '…….'],
+  '덜컹, 하는 소리에 눈을 떴다.': ['A heavy clunk woke me up.', 'ガタン、という音で目が覚めた。'],
+  '열차는 이미 떠났고, 나는 승강장 벤치에 앉아 있다.': ['The train is already gone. I\'m sitting on a platform bench.', '電車はもう行ってしまい、わたしはホームのベンチに座っている。'],
+  '역명판에는 「무영」이라고 적혀 있다.\n……이 노선에 그런 역이 있었나?': ['The station sign reads 「무영」 — Muyeong.\n...Was there ever a station like that on this line?', '駅名標には「무영（ムヨン）」と書いてある。\n……この路線に、そんな駅あっただろうか。'],
+  '일단 밖으로 나가야 한다.': ['First, I need to get outside.', 'とにかく、外に出なければ。'],
+  '(하얗게 깜빡이는 점을 누르면 조사할 수 있다.\n 막히면 오른쪽 위 [?]를 누르자. 한 번 누르면 귀띔, 두 번 누르면 갈 곳을 알려 준다.)': [
+    '(Tap a blinking white dot to examine it.\n Stuck? Tap [?] at the top right: once for a nudge, twice to be shown where to go.)',
+    '（白く点滅する点を押すと調べられる。\n 詰まったら右上の [?] を押そう。一度でヒント、二度で行き先を教えてくれる。）'],
+
+  // 승강장
+  '벤치 밑에서 진동 소리가 난다.': ['Something is vibrating under the bench.', 'ベンチの下から振動音がする。'],
+  '내 휴대폰이다. 졸다가 떨어뜨린 모양이다.': ['It\'s my phone. I must have dropped it when I dozed off.', 'わたしの携帯だ。うとうとして落としたらしい。'],
+  '[휴대폰]을 주웠다. 왼쪽 위 가방을 누르면 꺼내 볼 수 있다.': ['Picked up the [Phone]. Tap the bag at the top left to take it out.', '[携帯] を拾った。左上のかばんを押すと取り出せる。'],
+  '벤치가 축축하게 젖어 있다.': ['The bench is damp.', 'ベンチがじっとり濡れている。'],
+  '방금까지 누가 앉아 있었던 것처럼.': ['As if someone had been sitting here until a moment ago.', 'まるで、さっきまで誰かが座っていたみたいに。'],
+  '낡은 나무 벤치. 누군가 오래 앉아 기다린 것처럼 한쪽만 닳아 있다.': ['An old wooden bench. Only one side is worn down, as if someone sat there waiting for a very long time.', '古い木のベンチ。誰かが長いこと座って待っていたように、片側だけがすり減っている。'],
+  '사람을 찾습니다': ['MISSING', '捜しています'],
+  '윤 <span class="smudge">서하</span>': ['Yoon <span class="smudge">Seo-ha</span>', 'ユン・<span class="smudge">ソハ</span>'],
+  '윤서하': ['Yoon Seo-ha', 'ユン・ソハ'],
+  '당시 19세 · 교복 차림<br><b>2009년 4월 17일</b> 막차를 탄 뒤<br>연락이 끊겼습니다.': ['Age 19 · wearing a school uniform<br>Not heard from since boarding the last train<br>on <b>April 17, 2009</b>.', '当時19歳 · 制服姿<br><b>2009年4月17日</b> 終電に乗ったあと<br>連絡が途絶えました。'],
+  '보신 분은 가까운 역무실로 알려 주세요.': ['If you have seen her, please tell the nearest station office.', '見かけた方は、お近くの駅務室までお知らせください。'],
+  '빈 게시판에 전단 한 장만 붙어 있다.': ['A single flyer is pinned to the empty board.', '空っぽの掲示板に、貼り紙が一枚だけ貼ってある。'],
+  '이름 부분이 손톱으로 긁어낸 것처럼 지워져 있다.': ['The name has been scraped away, as if with fingernails.', '名前の部分が、爪で削り取ったように消されている。'],
+  '2009년 4월 17일……. 꽤 오래된 전단이다.': ['April 17, 2009... This flyer is old.', '2009年4月17日……。かなり古い貼り紙だ。'],
+  '지워진 이름. 성이 「윤」이다.': ['The scratched-out name. The surname is "Yoon".', '消された名前。名字は「ユン」だ。'],
+  '보관함에서 나온 이름표와 같다.': ['The same as the name tag from the locker.', 'ロッカーから出てきた名札と同じだ。'],
+  '……지금은 나가는 게 먼저다.': ['...Right now, getting out comes first.', '……今は、出るのが先だ。'],
+  '전단의 이름이 지워져 있다. 손에는 「윤서하」 이름표가 있다.': ['The name on the flyer is scratched out. In my hand is the name tag: "Yoon Seo-ha".', '貼り紙の名前は消されている。手には「ユン・ソハ」の名札がある。'],
+  '이름표를 전단에 꽂는다': ['Pin the name tag to the flyer', '名札を貼り紙に留める'], '그만둔다': ['Leave it', 'やめておく'],
+
+  // 터널
+  '아무것도 보이지 않는다.': ['I can\'t see anything.', '何も見えない。'], '바람도 불지 않는다.': ['There isn\'t even a draft.', '風も吹いていない。'],
+  '……숨소리?': ['...Breathing?', '……息の音？'],
+  '어둠 속에 무언가 서 있는 것 같기도 하다.': ['It almost looks like something is standing in the dark.', '闇の中に、何かが立っているような気もする。'],
+  '그만 보는 게 좋겠다.': ['I should stop looking.', 'もう見ないほうがいい。'],
+  '들여다보지 말았어야 했다': ['You shouldn\'t have looked', 'のぞくべきではなかった'],
+  '어둠도 당신을 들여다보고 있었다.': ['The dark was looking back at you.', '闇もまた、あなたをのぞいていた。'],
+
+  // 역무실 · 보관함
+  '역무실은 불이 꺼져 있고 문은 잠겨 있다.': ['The station office is dark and the door is locked.', '駅務室は明かりが消えていて、ドアには鍵がかかっている。'],
+  '유리창 안쪽에 메모가 붙어 있다.': ['A note is taped to the inside of the window.', '窓の内側にメモが貼ってある。'],
+  '「순찰 중.\n 셔터 열쇠는 보관함 13번.\n 비밀번호는 그 애한테 물어볼 것.」': ['"On patrol.\n Shutter key is in locker 13.\n Ask that girl for the code."', '「巡回中。\n シャッターの鍵はロッカー13番。\n 暗証番号はあの子に聞くこと。」'],
+  '……그 애?': ['...That girl?', '……あの子？'],
+  '13번 보관함은 텅 비어 있다.': ['Locker 13 is completely empty.', '13番のロッカーは空っぽだ。'],
+  '안쪽 벽에 긁힌 자국이 있다.': ['There are scratch marks on the inner wall.', '奥の壁に引っかいた跡がある。'],
+  '번호를 훑어본다. 1, 2, 3, 5…… 4번이 없다.': ['I scan the numbers. 1, 2, 3, 5... There is no 4.', '番号を目で追う。1、2、3、5……4番がない。'],
+  '맨 아래 구석 칸이 13번이다. 네 자리 번호 자물쇠가 달려 있다.': ['Number 13 is in the bottom corner. It has a four-digit combination lock.', '一番下の隅が13番だ。四桁のダイヤル錠が付いている。'],
+  '다른 칸은 전부 비어 있는데, 맨 아래 구석 13번 칸에만 네 자리 번호 자물쇠가 달려 있다.': ['Every other locker is empty, but number 13 in the bottom corner has a four-digit combination lock.', '他はすべて空なのに、一番下の隅の13番にだけ四桁のダイヤル錠が付いている。'],
+  '보관함 13': ['LOCKER 13', 'ロッカー 13'], '지움': ['DEL', '消す'], '확인': ['OK', '決定'],
+  '「내가 사라진 날」…… 전단에 날짜가 있었다.': ['"The day I vanished"... The flyer had a date.', '「わたしが消えた日」……貼り紙に日付があった。'],
+  '「내가 사라진 날」…… 그게 언제인지 알아야 한다.': ['"The day I vanished"... I need to find out when that was.', '「わたしが消えた日」……それがいつなのか知らなければ。'],
+  '승강장 게시판에 뭔가 붙어 있었던 것 같다.': ['I think something was pinned to the notice board on the platform.', 'ホームの掲示板に、何か貼ってあった気がする。'],
+  '번호를 모른다.': ['I don\'t know the code.', '番号が分からない。'],
+  '역무실 메모대로라면 「그 애」가 알고 있다. 다른 곳을 더 둘러보자.': ['According to the office note, "that girl" knows it. Look around some more.', '駅務室のメモによれば「あの子」が知っている。他の場所も見て回ろう。'],
+  '대합실 왼쪽 역무실 유리창에 뭔가 붙어 있었다. 그것부터 읽어 보자.': ['Something was taped to the station office window, left of the concourse. Read that first.', 'コンコース左の駅務室の窓に、何か貼ってあった。まずそれを読もう。'],
+  '……!!': ['...!!', '……！！'],
+  '……아무것도 없다. 분명 손이 나왔는데.': ['...Nothing there. But a hand came out. I\'m sure of it.', '……何もない。確かに手が出てきたのに。'],
+  '보관함 안에는 녹슨 열쇠와, 플라스틱 이름표가 놓여 있다.': ['Inside the locker are a rusty key and a plastic name tag.', 'ロッカーの中には、錆びた鍵とプラスチックの名札が置いてある。'],
+  '[셔터 열쇠]와 [이름표]를 얻었다.': ['Got the [Shutter key] and the [Name tag].', '[シャッターの鍵] と [名札] を手に入れた。'],
+  '휴대폰이 울렸다.': ['My phone buzzed.', '携帯が鳴った。'],
+  '(왼쪽 위 가방에서 휴대폰을 꺼내 볼 수 있다.)': ['(Take the phone out of the bag at the top left.)', '（左上のかばんから携帯を取り出せる。）'],
+
+  // 화장실
+  '물은 저절로 잠겨 있다.': ['The water has shut itself off.', '水はひとりでに止まっている。'],
+  '거울에 김이 서려 있다.': ['The mirror is fogged over.', '鏡が曇っている。'],
+  '수도꼭지를 돌리자 뜨거운 물이 쏟아진다.': ['I turn the tap and hot water gushes out.', '蛇口をひねると、熱い湯が勢いよく出てきた。'],
+  '거울에 김이 서린다.': ['The mirror fogs up.', '鏡が曇っていく。'],
+  '……김 위로 누군가 손가락으로 쓴 글씨가 떠오른다.': ['...Words written by someone\'s finger appear in the fog.', '……曇りの上に、誰かが指で書いた文字が浮かび上がる。'],
+  '「내가 사라진 날」': ['"THE DAY I VANISHED"', '「わたしが消えた日」'],
+  '내가 사라진 날': ['THE DAY I VANISHED', 'わたしが消えた日'],
+  '얼룩진 거울. 지친 내 얼굴이 비친다.': ['A stained mirror. My tired face looks back.', '汚れた鏡。疲れた自分の顔が映っている。'],
+  '김 서린 글씨: 「내가 사라진 날」': ['Written in the fog: "THE DAY I VANISHED"', '曇りに浮かぶ文字：「わたしが消えた日」'],
+  '뒤쪽 칸막이 문이 전부 닫혀 있다.': ['Behind me, every stall door is shut.', '後ろの個室のドアは、すべて閉まっている。'],
+  '……방금 내 뒤에.': ['...Just now, behind me.', '……今、後ろに。'],
+  '돌아봤지만 아무도 없다.': ['I turned around. No one.', '振り返ったが、誰もいない。'],
+  '더는 거울을 보고 싶지 않다.': ['I don\'t want to look in the mirror anymore.', 'もう鏡は見たくない。'],
+  '……헉, ……헉.': ['...hah, ...hah.', '……はっ、……はっ。'],
+  '거울 속에는 다시 내 얼굴뿐이다.': ['Only my own face in the mirror again.', '鏡の中には、また自分の顔だけ。'],
+  '보지 않는다.': ['I won\'t look.', '見ない。'],
+
+  // 셔터
+  '셔터 뒤는 벽이다.': ['Behind the shutter is a wall.', 'シャッターの向こうは壁だ。'],
+  '여기로는 나갈 수 없다.': ['There\'s no way out through here.', 'ここからは出られない。'],
+  '철제 셔터가 바닥까지 내려와 있다.': ['A steel shutter is pulled all the way to the floor.', '鉄のシャッターが床まで下りている。'],
+  '아래쪽에 열쇠 구멍이 있다. 열쇠가 필요하다.': ['There\'s a keyhole near the bottom. I need a key.', '下のほうに鍵穴がある。鍵が必要だ。'],
+  '열쇠를 돌리자 셔터가 덜컹거리며 올라간다.': ['I turn the key and the shutter rattles upward.', '鍵を回すと、シャッターがガタガタと上がっていく。'],
+  '……계단이 없다.': ['...There are no stairs.', '……階段がない。'],
+  '셔터 뒤는 콘크리트 벽이다.\n벽 가득, 손톱으로 긁은 자국이 나 있다.': ['Behind the shutter is a concrete wall.\nIt is covered in fingernail scratches.', 'シャッターの向こうはコンクリートの壁だ。\n壁一面に、爪で引っかいた跡が付いている。'],
+  '여기서 나가려던 사람이, 나만은 아니었던 모양이다.': ['I wasn\'t the only one who tried to get out of here.', 'ここから出ようとしたのは、わたしだけではなかったらしい。'],
+  '〈 지금, 무영, 무영역에…… 마지막 열차가 들어오고 있습니다. 〉': ['〈 Now arriving at Muyeong... Muyeong Station... the last train. 〉', '〈 まもなく、ムヨン、ムヨン駅に……最終電車がまいります。 〉'],
+  '〈 손님 여러분께서는…… 한 분도 빠짐없이…… 승차하여 주시기 바랍니다. 〉': ['〈 All passengers... every last one of you... please board. 〉', '〈 お客様は……お一人残らず……ご乗車ください。 〉'],
+  '발밑에서 진동이 올라온다. 승강장에 열차가 들어왔다.': ['The floor trembles under my feet. A train has pulled into the platform.', '足元から振動が伝わってくる。ホームに電車が入ってきた。'],
+  '휴대폰이 또 울린다.': ['My phone buzzes again.', 'また携帯が鳴る。'],
+  '(가방에서 휴대폰을 꺼내 볼 수 있다.)': ['(Take the phone out of the bag.)', '（かばんから携帯を取り出せる。）'],
+
+  // 열차
+  '문이 열려 있다. 안에는 아무도 없다. 탈까?': ['The doors are open. No one is inside. Get on?', 'ドアが開いている。中には誰もいない。乗る？'],
+  '탄다': ['Get on', '乗る'], '타지 않는다': ['Don\'t', '乗らない'],
+  '발을 들이자마자 등 뒤에서 문이 닫혔다.': ['The moment I step in, the doors close behind me.', '足を踏み入れた途端、背後でドアが閉まった。'],
+  '열차가 움직이기 시작한다.': ['The train starts to move.', '電車が動き出す。'],
+  '(화면을 눌러 주위를 살핀다)': ['(Tap the screen to look around)', '（画面を押して周りを見る）'],
+  '맨 끝 칸에 누가 서 있다.': ['Someone is standing at the far end of the car.', '一番奥に、誰かが立っている。'],
+  '불이 깜빡인 사이, 가까워졌다.': ['The lights flickered. She\'s closer.', '明かりが瞬いた間に、近づいている。'],
+  '……바로 앞이다.': ['...Right in front of me.', '……すぐ目の前だ。'],
+  '막차에는 종점이 없다': ['The last train has no last stop', '終電に終点はない'],
+  '〈 다음 역은, 무영, 무영역입니다. 〉': ['〈 Next stop: Muyeong. Muyeong Station. 〉', '〈 次は、ムヨン、ムヨン駅です。 〉'],
+
+  // 결말
+  '이름표를 전단의 지워진 자리에 꽂았다.': ['I pinned the name tag over the scratched-out spot on the flyer.', '名札を、貼り紙の消された場所に留めた。'],
+  '「윤서하」.': ['"Yoon Seo-ha."', '「ユン・ソハ」。'],
+  '승강장 끝에, 그 애가 서 있다.': ['She is standing at the end of the platform.', 'ホームの端に、あの子が立っている。'],
+  '이번에는 다가오지 않는다.': ['This time, she doesn\'t come closer.', '今度は、近づいてこない。'],
+  '「……아무도, 내 이름을 안 불러 줬어.」': ['"...No one ever said my name."', '「……誰も、わたしの名前を呼んでくれなかった。」'],
+  '「……고마워.」': ['"...Thank you."', '「……ありがとう。」'],
+  '열차는 문을 닫고, 그 애를 태운 채 터널 속으로 사라졌다.': ['The train closed its doors and carried her off into the tunnel.', '電車はドアを閉め、あの子を乗せたままトンネルの中へ消えていった。'],
+  '위쪽에서 셔터 올라가는 소리가 들린다.': ['From upstairs comes the sound of a shutter rising.', '上のほうから、シャッターの上がる音が聞こえる。'],
+  '이번에는 계단이 있었다.': ['This time, there were stairs.', '今度は、階段があった。'],
+  '휴대폰 시계가 다시 움직이기 시작한다. 04:17.': ['The clock on my phone starts moving again. 04:17.', '携帯の時計が、また動き始める。04:17。'],
+  '첫차가 다니기 전의, 조용한 새벽이었다.': ['A quiet dawn, before the first train of the day.', '始発が走る前の、静かな夜明けだった。'],
+  '막차 — 끝': ['MAKCHA — The End', '막차（終電）— 終'],
+  '플레이해 주셔서 감사합니다.': ['Thank you for playing.', 'プレイしていただき、ありがとうございました。'],
+  '새 메시지 · 발신자 표시 없음': ['New message · No Caller ID', '新着メッセージ · 非通知'],
+  '「다음 막차에서 또 봐」': ['"see you on the next last train"', '「次の終電で、また会おうね」'],
+};
+const LANGS = ['ko', 'en', 'ja'];
+let LANG = new URLSearchParams(location.search).get('lang') || store.get('makcha_lang') || (navigator.language || 'en').slice(0, 2);
+if (!LANGS.includes(LANG)) LANG = 'en';
+const tr = s => { const i = LANGS.indexOf(LANG) - 1, e = TR[s]; return i < 0 || !e ? s : e[i]; };
+const locName = n => n.startsWith('무영역 · ') ? tr('무영역') + ' · ' + tr(n.slice(6)) : n;
+const WARN = '※ 경고 ※<br>갑자기 놀라는 장면과 큰 소리가 나옵니다.<br>심장이 약하신 분, 임산부, 노약자는 하지 마세요.<br>스피커를 켜고 불을 끄고 하세요.';
+function applyLang() {
+  document.documentElement.lang = LANG; store.set('makcha_lang', LANG);
+  $('.tSub').textContent = tr('눈을 떠 보니 노선도에 없는 역이었다'); $('#btnStart').textContent = tr('▶ 게임시작'); $('.tWarn').innerHTML = tr(WARN);
+  $('#mirrorText').textContent = tr('내가 사라진 날'); $('#endBtn').textContent = tr('돌아가기');
+  $('#btnBag').title = tr('가방'); $('#btnHint').title = tr('힌트'); $('#btnFull').title = tr('전체화면'); $('#ovClose').title = tr('닫기');
+  document.querySelectorAll('#tLang button').forEach(b => b.classList.toggle('cur', b.dataset.l === LANG));
+  showTame(); applyMute();
+}
+function initAudio() {
+  if (ac) return;
+  ac = new (window.AudioContext || window.webkitAudioContext)();
+  master = ac.createGain(); master.gain.value = 1; master.connect(ac.destination);
+  // 형광등 웅웅거림 + 지하 공기 소리
+  [[50, .05], [100.6, .022], [151, .008]].forEach(([f, g]) => { const o = ac.createOscillator(), v = ac.createGain(); o.frequency.value = f; o.type = 'sawtooth'; v.gain.value = g; const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 300; o.connect(lp).connect(v).connect(master); o.start(); });
+  const n = noiseSrc(4, true), lp = ac.createBiquadFilter(), g = ac.createGain();
+  lp.type = 'lowpass'; lp.frequency.value = 180; g.gain.value = .5; n.connect(lp).connect(g).connect(master); n.start();
+  const lfo = ac.createOscillator(), lg = ac.createGain(); lfo.frequency.value = .07; lg.gain.value = .25; lfo.connect(lg).connect(g.gain); lfo.start();
+  applyMute();
+}
+function noiseSrc(sec, loop) {
+  const b = ac.createBuffer(1, ac.sampleRate * sec, ac.sampleRate), d = b.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  const s = ac.createBufferSource(); s.buffer = b; s.loop = !!loop; return s;
+}
+function tone(f, dur, type = 'sine', vol = .2, when = 0, f2) {
+  if (!ac || muted) return; const t = ac.currentTime + when, o = ac.createOscillator(), g = ac.createGain();
+  o.type = type; o.frequency.setValueAtTime(f, t); if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + dur);
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + .01); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+  o.connect(g).connect(master); o.start(t); o.stop(t + dur + .05);
+}
+function burst(dur, freq, vol = .4, when = 0, type = 'lowpass') {
+  if (!ac || muted) return; const t = ac.currentTime + when, n = noiseSrc(dur + .1), f = ac.createBiquadFilter(), g = ac.createGain();
+  f.type = type; f.frequency.value = freq; g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+  n.connect(f).connect(g).connect(master); n.start(t); n.stop(t + dur + .1);
+}
+const sfx = {
+  click: () => tone(900, .04, 'square', .04),
+  step: () => { burst(.12, 220, .5); burst(.12, 200, .4, .38); },
+  key: () => tone(520, .07, 'square', .08),
+  wrong: () => { tone(140, .25, 'square', .12); },
+  open: () => { burst(.25, 900, .5); tone(90, .3, 'sawtooth', .15, .05, 50); },
+  buzz: () => { for (let i = 0; i < 2; i++) tone(155, .28, 'square', .1, i * .42); },
+  water: () => burst(2.6, 2600, .16, 0, 'bandpass'),
+  chime: () => { [659, 523, 587, 392].forEach((f, i) => tone(f, .7, 'sine', .14, i * .45)); },
+  shutter: () => { for (let i = 0; i < 14; i++) burst(.09, 1500 + Math.random() * 900, .32, i * .13, 'bandpass'); tone(60, 1.9, 'sawtooth', .12); },
+  train: () => { burst(5, 320, .7); tone(48, 5, 'sawtooth', .22, 0, 34); for (let i = 0; i < 12; i++) burst(.07, 500, .35, .3 + i * .36); },
+  breath: () => { burst(1.1, 700, .12, 0, 'bandpass'); burst(1.4, 500, .1, 1.3, 'bandpass'); },
+  thump: () => { tone(58, .22, 'sine', .7, 0, 36); tone(58, .22, 'sine', .5, .26, 36); },
+  whisper: () => { for (let i = 0; i < 5; i++) burst(.18, 3200 + Math.random() * 1500, .07, i * .23, 'bandpass'); },
+  scream: () => {
+    if (!ac || muted || tame) return; const t = ac.currentTime;
+    [430, 611, 877, 1290, 1733].forEach(f => { const o = ac.createOscillator(), g = ac.createGain(), l = ac.createOscillator(), lg = ac.createGain();
+      o.type = 'sawtooth'; o.frequency.setValueAtTime(f * .6, t); o.frequency.exponentialRampToValueAtTime(f * 1.25, t + .12); o.frequency.exponentialRampToValueAtTime(f * .8, t + 1.3);
+      l.frequency.value = 23 + Math.random() * 14; lg.gain.value = f * .07; l.connect(lg).connect(o.frequency);
+      g.gain.setValueAtTime(.26, t); g.gain.exponentialRampToValueAtTime(.0001, t + 1.4);
+      o.connect(g).connect(master); o.start(t); l.start(t); o.stop(t + 1.5); l.stop(t + 1.5); });
+    burst(1.2, 2400, .8, 0, 'highpass'); tone(52, .5, 'sine', .9, 0, 30);
+  },
+  bell: () => { [1046, 1318, 1568].forEach((f, i) => tone(f, 1.6, 'sine', .07, i * .2)); },
+};
+function applyMute() {
+  const b = $('#btnMute'); b.classList.toggle('muted', muted); b.title = tr(muted ? '소리 켜기' : '소리 끄기'); store.set('makcha_mute', muted ? '1' : '0');
+  if (!ac) return;
+  master.gain.cancelScheduledValues(0); master.gain.value = muted ? 0 : 1;
+  try { muted ? master.disconnect() : master.connect(ac.destination); } catch (e) {}
+  muted ? ac.suspend() : ac.resume();
+}
+$('#btnMute').onclick = e => { e.stopPropagation(); muted = !muted; applyMute(); e.currentTarget.blur(); };
+applyMute();
+$('#btnFull').onclick = () => document.fullscreenElement ? document.exitFullscreen() : $('#stage').requestFullscreen?.();
+
+/* ───────── 상태 ───────── */
+const fresh = () => ({ scene: 'platform', inv: [], phone: false, sawPoster: false, sawNote: false, tap: false, mirror: 0, tunnel: 0,
+  lockerOpen: false, key: false, tag: false, shutter: false, trainHere: false, ride: 0, firstConcourse: true, firstRest: true });
+let S = fresh(), bagSeen = 0;
+$('#btnBag').onclick = e => { e.stopPropagation(); if ($('#blocker').classList.contains('on') || $('#ov').classList.contains('on')) return; sfx.click(); $('#inv').classList.toggle('open'); bagSeen = S.inv.length; $('#bagN').textContent = ''; $('#btnBag').classList.remove('new'); };
+document.addEventListener('click', e => { if (!e.target.closest('#inv')) $('#inv').classList.remove('open'); });
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+/* ───────── 대사 / 선택지 ───────── */
+let dlgResolve = null, typing = null;
+function busy(on) { $('#blocker').classList.toggle('on', on); }
+function say(...lines) {
+  return lines.map(tr).reduce((p, line) => p.then(() => new Promise(res => {
+    busy(true); const box = $('#dlg'), t = $('#dlgText'); box.classList.add('on'); $('#choices').innerHTML = ''; $('.more').style.display = '';
+    let i = 0; t.textContent = '';
+    clearInterval(typing);
+    typing = setInterval(() => { t.textContent = line.slice(0, ++i); if (i >= line.length) { clearInterval(typing); typing = null; } }, 26);
+    dlgResolve = () => { if (typing) { clearInterval(typing); typing = null; t.textContent = line; return; } dlgResolve = null; sfx.click(); res(); };
+  })), Promise.resolve()).then(() => { $('#dlg').classList.remove('on'); busy(false); });
+}
+$('#dlg').onclick = $('#blocker').onclick = () => dlgResolve && dlgResolve();
+document.addEventListener('keydown', e => { if ((e.key === ' ' || e.key === 'Enter') && dlgResolve) { e.preventDefault(); dlgResolve(); } });
+function choose(text, opts) {
+  return new Promise(res => { busy(true); dlgResolve = null; $('#dlg').classList.add('on'); $('#dlgText').textContent = tr(text); $('.more').style.display = 'none';
+    const c = $('#choices'); c.innerHTML = '';
+    opts.forEach((o, i) => { const b = document.createElement('button'); b.textContent = tr(o); b.onclick = e => { e.stopPropagation(); sfx.click(); $('#dlg').classList.remove('on'); busy(false); res(i); }; c.append(b); }); });
+}
+
+/* ───────── 오버레이 ───────── */
+let ovResolve = null;
+function overlay(html) { $('#ovBody').innerHTML = html; $('#ov').classList.add('on'); return new Promise(r => ovResolve = r); }
+function closeOv(v) { $('#ov').classList.remove('on'); $('#ovBody').innerHTML = ''; const r = ovResolve; ovResolve = null; r && r(v); }
+$('#ovClose').onclick = () => { sfx.click(); closeOv(); };
+
+/* ───────── 연출 ───────── */
+function fxImg(name, css) { const i = document.createElement('img'); i.src = A(name); Object.assign(i.style, css); $('#fx').append(i); return i; }
+function clearFx() { $('#fx').innerHTML = ''; altOff(0); const w = $('#world'); w.style.transition = ''; w.style.transform = ''; }
+// 귀신이 들어간 사진으로 배경을 바꿔치기한다 (겹치기 대신)
+function alt(name, fade = .6) { const b = $('#bg2'); b.style.transition = `opacity ${fade}s`; b.style.backgroundImage = `url(${A(name)})`; void b.offsetWidth; b.style.opacity = 1; }
+function altOff(fade = .6) { const b = $('#bg2'); b.style.transition = `opacity ${fade}s`; b.style.opacity = 0; }
+async function jumpscare(ms = 1000) {
+  if (tame) { busy(true); $('#fade').classList.add('on'); sfx.thump(); await sleep(700); $('#fade').classList.remove('on'); await sleep(300); busy(false); return; }
+  busy(true); const sc = $('#scare'); sc.style.backgroundImage = `url(${A('ghost_face')})`;
+  sc.classList.add('on'); $('#stage').classList.add('shake'); sfx.scream();
+  await sleep(ms);
+  sc.classList.remove('on'); $('#stage').classList.remove('shake'); busy(false);
+}
+async function flash() { const w = $('#white'); w.style.transition = 'none'; w.style.opacity = .9; await sleep(60); w.style.transition = 'opacity .5s'; w.style.opacity = 0; }
+async function badEnd(title, text) {
+  await jumpscare(1100);
+  $('#endTitle').textContent = tr(title); $('#endText').innerHTML = tr(text); $('#endBtn').textContent = tr('직전으로 돌아가기');
+  $('#end').classList.add('on');
+  await new Promise(r => $('#endBtn').onclick = r);
+  sfx.click(); $('#end').classList.remove('on');
+}
+
+/* ───────── 장면 ───────── */
+const SCENES = {
+  platform: {
+    name: '무영역 · 승강장', bg: () => S.trainHere ? 'platform_train' : 'platform',
+    hot: () => [
+      { x: 70, y: 56, w: 27, h: 30, label: '벤치', act: bench },
+      { x: 79, y: 18, w: 18, h: 35, label: '게시판', act: board },
+      S.trainHere ? { x: 10, y: 28, w: 20, h: 58, label: '열차에 탄다', act: boardTrain } : { x: 42, y: 32, w: 14, h: 26, label: '터널 쪽', act: () => go('tunnel') },
+    ],
+    nav: () => [{ dir: 'down', label: '계단으로 ▼', act: () => go('stairs') }],
+  },
+  tunnel: {
+    name: '무영역 · 승강장 끝', bg: () => 'tunnel',
+    hot: () => [{ x: 30, y: 22, w: 40, h: 46, label: '어둠 속을 들여다본다', act: peek }],
+    nav: () => [{ dir: 'down', label: '돌아선다 ▼', act: () => { S.tunnel = Math.min(S.tunnel, 1); go('platform'); } }],
+  },
+  stairs: {
+    name: '무영역 · 계단', bg: () => 'stairs',
+    hot: () => [],
+    nav: () => [{ dir: 'up', label: '▲ 대합실로', act: () => go('concourse') }, { dir: 'down', label: '승강장으로 ▼', act: () => go('platform') }],
+  },
+  concourse: {
+    name: '무영역 · 대합실', bg: () => 'concourse',
+    hot: () => [
+      { x: 3, y: 30, w: 24, h: 34, label: '역무실', act: office },
+      { x: 82, y: 38, w: 18, h: 44, label: '물품보관함', act: () => go('lockers') },
+      { x: 50, y: 38, w: 22, h: 23, label: '출구 셔터', act: shutter },
+    ],
+    nav: () => [{ dir: 'left2', label: '◀ 화장실', act: () => go('restroom') }, { dir: 'down', label: '계단으로 ▼', act: () => go('stairs') }],
+  },
+  lockers: {
+    name: '무영역 · 물품보관함', bg: () => 'lockers',
+    hot: () => [{ x: 8, y: 8, w: 84, h: 70, label: '보관함', act: lockers }],
+    nav: () => [{ dir: 'down', label: '물러난다 ▼', act: () => go('concourse') }],
+  },
+  restroom: {
+    name: '무영역 · 화장실', bg: () => 'restroom',
+    hot: () => [
+      { x: 14, y: 17, w: 72, h: 40, label: '거울', act: mirror },
+      { x: 14, y: 63, w: 72, h: 20, label: '세면대', act: tap },
+    ],
+    nav: () => [{ dir: 'down', label: '나간다 ▼', act: () => go('concourse') }],
+  },
+  wall: { name: '무영역 · 출구', bg: () => 'wall', hot: () => [], nav: () => [] },
+  train: { name: '— · —', bg: () => 'train', hot: () => [{ x: 0, y: 0, w: 100, h: 82, label: '', act: ride }], nav: () => [] },
+  exit_dawn: { name: '', bg: () => 'exit_dawn', hot: () => [], nav: () => [] },
+};
+
+function render() {
+  const sc = SCENES[S.scene], h = $('#hots'); h.innerHTML = '';
+  $('#bg').style.backgroundImage = `url(${A(sc.bg())})`;
+  $('#loc').textContent = locName(sc.name);
+  $('#goal').innerHTML = ['wall', 'train', 'exit_dawn'].includes(S.scene) ? '' : tr(sc.name.replace('무영역 · ', '')) + ' <b>| ' + tr('목표: ') + tr(goal()) + '</b>';
+  $('#world').classList.toggle('flicker', !['exit_dawn', 'lockers'].includes(S.scene));
+  $('#fog').classList.toggle('on', S.scene === 'restroom' && S.tap);
+  $('#mirrorText').classList.toggle('on', S.scene === 'restroom' && S.tap);
+  sc.hot().filter(Boolean).forEach(o => { const d = document.createElement('div'); d.className = 'hot'; d.dataset.label = tr(o.label); d.dataset.key = o.label;
+    Object.assign(d.style, { left: o.x + '%', top: o.y + '%', width: o.w + '%', height: o.h + '%' }); if (!o.label) { d.style.cursor = 'default'; d.classList.add('nolabel'); }
+    d.onclick = () => { sfx.click(); o.act(); }; h.append(d); });
+  sc.nav().forEach(n => { const d = document.createElement('div'); d.className = 'nav ' + n.dir; d.textContent = tr(n.label); d.dataset.key = n.label; d.onclick = n.act; h.append(d); });
+  const tl = hintLevel >= 2 && goal() === hintGoal ? targetLabel() : null; if (tl) { const el = [...h.children].find(e => (e.dataset.key || '').includes(tl)); if (el) el.classList.add('target'); }
+  const inv = $('#bagList'); inv.innerHTML = S.inv.length ? '<div class="cap">' + tr('가방 — 눌러서 확인') + '</div>' : '<div class="empty">' + tr('비어 있음') + '</div>';
+  $('#bagN').textContent = Math.max(0, S.inv.length - bagSeen) || ''; if (S.inv.length > bagSeen) $('#btnBag').classList.add('new');
+  S.inv.forEach(it => { const d = document.createElement('div'); d.className = 'item'; d.textContent = tr(ITEMS[it].name); d.onclick = () => { if ($('#blocker').classList.contains('on') || $('#ov').classList.contains('on')) return; $('#inv').classList.remove('open'); sfx.click(); ITEMS[it].use(); }; inv.append(d); });
+}
+async function go(id, quiet) {
+  busy(true); if (!quiet) sfx.step();
+  $('#fade').classList.add('on'); await sleep(450);
+  clearFx(); S.scene = id; render();
+  await sleep(120); $('#fade').classList.remove('on'); await sleep(300); busy(false);
+  await (ENTER[id] || (() => {}))();
+}
+
+/* ───────── 목표 / 힌트 ───────── */
+function goal() {
+  const up = ['platform', 'tunnel', 'stairs'].includes(S.scene);
+  if (!S.phone) return '주변을 둘러본다';
+  if (!S.sawNote && !S.key) return up ? '위층으로 올라가 본다' : '나갈 방법을 찾는다';
+  if (!S.lockerOpen) return !S.tap ? '보관함 13번의 비밀번호를 알아낸다' : !S.sawPoster ? '「내가 사라진 날」이 언제인지 알아낸다' : '보관함 13번을 연다';
+  if (!S.shutter) return '열쇠를 쓸 곳을 찾는다';
+  if (!S.readMsg) return '휴대폰이 울렸다';
+  return '열차를 타지 않고 나갈 방법을 찾는다';
+}
+// 1단계 힌트: 방향만 귀띔
+function nudge() {
+  if (!S.phone) return ['어디선가 진동 소리가 난다. 가까운 곳부터 살펴보자.'];
+  if (!S.sawNote && !S.key) return ['concourse', 'lockers', 'restroom'].includes(S.scene) ? ['불 꺼진 방 유리창에 뭔가 붙어 있는 것 같다.'] : ['승강장에는 출구가 없다. 위로 올라가 보자.'];
+  if (!S.lockerOpen) return !S.tap ? ['「그 애」의 흔적이 남아 있을 만한 곳……', '대합실에 아직 제대로 살펴보지 않은 곳이 있다.'] : !S.sawPoster ? ['사라진 사람을 찾는 종이를 어디선가 본 것 같다.'] : ['날짜를 네 자리 숫자로 바꿔 보자.'];
+  if (!S.shutter) return ['열쇠에는 「출구」라고 적혀 있다.'];
+  if (!S.readMsg) return ['아까 휴대폰이 울렸었다.'];
+  return ['문자에는 「이름」을 돌려 달라고 적혀 있었다.', '이름이 지워져 있던 것을 어디선가 봤다.'];
+}
+// 다음에 눌러야 할 곳: [장면, 그 장면에서 누를 것]
+function target() {
+  if (!S.phone) return ['platform', '벤치'];
+  if (!S.sawNote && !S.key) return ['concourse', '역무실'];
+  if (!S.lockerOpen) return !S.tap ? ['restroom', '세면대'] : !S.sawPoster ? ['platform', '게시판'] : ['lockers', '보관함'];
+  if (!S.shutter) return ['concourse', '출구 셔터'];
+  if (!S.readMsg) return null;
+  return ['platform', '게시판'];
+}
+const PATHS = { platform: ['platform'], tunnel: ['platform', 'tunnel'], stairs: ['platform', 'stairs'], concourse: ['platform', 'stairs', 'concourse'], restroom: ['platform', 'stairs', 'concourse', 'restroom'], lockers: ['platform', 'stairs', 'concourse', 'lockers'] };
+const EDGES = { 'platform>stairs': '계단으로', 'stairs>concourse': '대합실로', 'concourse>restroom': '화장실', 'concourse>lockers': '물품보관함', 'platform>tunnel': '터널 쪽', 'stairs>platform': '승강장으로', 'concourse>stairs': '계단으로', 'restroom>concourse': '나간다', 'lockers>concourse': '물러난다', 'tunnel>platform': '돌아선다' };
+function targetLabel() {
+  const t = target(), here = PATHS[S.scene]; if (!t || !here) return null;
+  if (t[0] === S.scene) return t[1];
+  const to = PATHS[t[0]], i = to.indexOf(S.scene);
+  const next = i >= 0 ? to[i + 1] : here[here.length - 2];
+  return EDGES[S.scene + '>' + next];
+}
+function hint() {
+  if (!S.phone) return ['승강장 오른쪽 벤치를 눌러 보자.', '하얗게 깜빡이는 점이 있는 곳은 전부 조사할 수 있다.'];
+  if (!S.sawNote && !S.key) return ['[계단으로] → [대합실로] 올라가서, 왼쪽 역무실 유리창을 살펴보자.'];
+  if (!S.lockerOpen) {
+    if (!S.tap) return ['비밀번호는 「그 애」가 안다고 했다.', '대합실 왼쪽 [화장실]에 들어가 세면대 물을 틀어 보자.'];
+    if (!S.sawPoster) return ['거울의 글씨는 「내가 사라진 날」.', '승강장 게시판에 붙은 전단에 날짜가 적혀 있을 것이다.'];
+    return ['전단의 실종 날짜는 4월 17일.', '월과 일을 네 자리 숫자로 바꿔서 보관함 13번에 넣어 보자.'];
+  }
+  if (!S.shutter) return ['대합실 정면의 [출구 셔터]에 열쇠를 써 보자.'];
+  return ['휴대폰 문자를 확인해 보자. 열차는 타면 안 된다.', '「내 이름 돌려줘」 — 이름이 지워져 있던 곳은 승강장 게시판의 전단이다.'];
+}
+let lastGoal = '', lastMove = Date.now();
+setInterval(() => { if (!document.body.classList.contains('playing')) return; const g = goal(); if (g !== lastGoal) { lastGoal = g; lastMove = Date.now(); $('#btnHint').classList.remove('nudge'); } else if (Date.now() - lastMove > 40000 && !$('#end').classList.contains('on')) $('#btnHint').classList.add('nudge'); }, 2000);
+let hintLevel = 0, hintGoal = '';
+$('#btnHint').onclick = () => { lastMove = Date.now(); $('#btnHint').classList.remove('nudge');
+  if ($('#blocker').classList.contains('on') || $('#ov').classList.contains('on')) return; sfx.click();
+  if (goal() !== hintGoal) { hintGoal = goal(); hintLevel = 0; }
+  hintLevel++;
+  if (hintLevel === 1) say(...nudge(), '(그래도 모르겠으면 [?]를 한 번 더 누르자.)');
+  else { render(); say(...hint(), '(가야 할 곳을 빨간 점으로 표시했다.)'); }
+};
+
+function phoneAlert() { $('#btnBag').classList.add('new'); $('#bagN').textContent = '!'; }
+
+/* ───────── 소지품 ───────── */
+const ITEMS = {
+  phone: { name: '휴대폰', use: () => showPhone().then(async () => { render(); if (S.readMsg && !S.msgSaid) { S.msgSaid = true; await say('……이름을 돌려 달라고?'); } }) },
+  key: { name: '셔터 열쇠', use: () => say('녹슨 열쇠. 손잡이에 「출구」라고 적힌 테이프가 붙어 있다.') },
+  tag: { name: '이름표', use: () => say('교복에 다는 플라스틱 이름표.', '「윤 서 하」', '…뒷면 옷핀에 머리카락 몇 가닥이 엉켜 있다.') },
+};
+function showPhone() {
+  if (S.trainHere) S.readMsg = true;
+  const time = S.trainHere ? '01:13' : '01:13';
+  let msgs = `<div class="msg"><b>${tr('엄마 · 오후 11:52')}</b>${tr('어디니? 막차 탔어?')}</div>`;
+  if (S.key) msgs += `<div class="msg red"><b>${tr('발신자 표시 없음 · 01:13')}</b>${tr('거기로는 못 나가')}</div>`;
+  if (S.trainHere) msgs += `<div class="msg red"><b>${tr('발신자 표시 없음 · 01:13')}</b>${tr('타지 마<br>내 이름 돌려줘')}</div>`;
+  return overlay(`<div class="phone"><div class="bar"><span>${tr('서비스 없음')}</span><span>▯ 3%</span></div><div class="time">${time}</div>${msgs}
+    <div class="msg" style="opacity:.5;text-align:center">${tr('시계가 넘어가지 않는다.')}</div></div>`);
+}
+
+/* ───────── 장면 진입 이벤트 ───────── */
+const ENTER = {
+  async platform() {
+    if (S.trainHere && !S.trainSeen) { S.trainSeen = true;
+      await say('열차가 문을 연 채 서 있다. 안에는 아무도 없다.', '……타도 되는 걸까.'); }
+  },
+  async concourse() {
+    if (S.firstConcourse) { S.firstConcourse = false; await say('대합실에도 아무도 없다.', '개찰구는 전원이 꺼져 있고, 출구는 셔터로 막혀 있다.'); }
+  },
+  async restroom() {
+    if (S.firstRest) { S.firstRest = false; await say('수도꼭지에서 물이 한 방울씩 떨어지고 있다.'); }
+  },
+  async stairs() {
+    if (S.key && !S.stairSeen) { S.stairSeen = true;
+      busy(true); await sleep(300); alt('stairs_g', .1); sfx.thump(); await sleep(900); altOff(.25); await sleep(600); busy(false);
+      await say('……방금, 계단 위에.'); }
+  },
+};
+
+/* ───────── 행동들 ───────── */
+async function intro() {
+  await say('…….', '덜컹, 하는 소리에 눈을 떴다.', '열차는 이미 떠났고, 나는 승강장 벤치에 앉아 있다.', '역명판에는 「무영」이라고 적혀 있다.\n……이 노선에 그런 역이 있었나?', '일단 밖으로 나가야 한다.', '(하얗게 깜빡이는 점을 누르면 조사할 수 있다.\n 막히면 오른쪽 위 [?]를 누르자. 한 번 누르면 귀띔, 두 번 누르면 갈 곳을 알려 준다.)');
+}
+async function bench() {
+  if (!S.phone) { S.phone = true; S.inv.push('phone'); render(); sfx.buzz();
+    await say('벤치 밑에서 진동 소리가 난다.', '내 휴대폰이다. 졸다가 떨어뜨린 모양이다.', '[휴대폰]을 주웠다. 왼쪽 위 가방을 누르면 꺼내 볼 수 있다.'); }
+  else if (S.trainHere) await say('벤치가 축축하게 젖어 있다.', '방금까지 누가 앉아 있었던 것처럼.');
+  else await say('낡은 나무 벤치. 누군가 오래 앉아 기다린 것처럼 한쪽만 닳아 있다.');
+}
+function posterHtml(tagged) {
+  return `<div class="poster"><h2>${tr('사람을 찾습니다')}</h2><img src="${A('portrait')}"><div class="name">${tr('윤 <span class="smudge">서하</span>')}</div>${tagged ? `<div class="tag">${tr('윤서하')}</div>` : ''}
+    <p>${tr('당시 19세 · 교복 차림<br><b>2009년 4월 17일</b> 막차를 탄 뒤<br>연락이 끊겼습니다.')}</p><p style="margin-top:.6em;font-size:.85em">${tr('보신 분은 가까운 역무실로 알려 주세요.')}</p></div>`;
+}
+async function board() {
+  if (!S.sawPoster) await say('빈 게시판에 전단 한 장만 붙어 있다.');
+  S.sawPoster = true;
+  await overlay(posterHtml(false));
+  if (!S.tag) return say('이름 부분이 손톱으로 긁어낸 것처럼 지워져 있다.', '2009년 4월 17일……. 꽤 오래된 전단이다.');
+  if (!S.trainHere) return say('지워진 이름. 성이 「윤」이다.', '보관함에서 나온 이름표와 같다.', '……지금은 나가는 게 먼저다.');
+  const c = await choose('전단의 이름이 지워져 있다. 손에는 「윤서하」 이름표가 있다.', ['이름표를 전단에 꽂는다', '그만둔다']);
+  if (c === 0) trueEnd();
+}
+async function peek() {
+  S.tunnel++;
+  if (S.tunnel === 1) await say('아무것도 보이지 않는다.', '바람도 불지 않는다.');
+  else if (S.tunnel === 2) { sfx.breath(); alt('tunnel_g', 3);
+    await say('……숨소리?', '어둠 속에 무언가 서 있는 것 같기도 하다.', '그만 보는 게 좋겠다.'); }
+  else { busy(true); alt('tunnel_g', .1); const w = $('#world'); w.style.transition = 'transform .55s ease-in'; w.style.transform = 'scale(2.8)'; await sleep(520);
+    await badEnd('들여다보지 말았어야 했다', '어둠도 당신을 들여다보고 있었다.'); S.tunnel = 0; go('platform', true); }
+}
+async function office() {
+  S.sawNote = true;
+  await say('역무실은 불이 꺼져 있고 문은 잠겨 있다.', '유리창 안쪽에 메모가 붙어 있다.', '「순찰 중.\n 셔터 열쇠는 보관함 13번.\n 비밀번호는 그 애한테 물어볼 것.」', '……그 애?');
+}
+async function lockers() {
+  if (S.lockerOpen) return say('13번 보관함은 텅 비어 있다.', '안쪽 벽에 긁힌 자국이 있다.');
+  if (S.sawNote) await say('번호를 훑어본다. 1, 2, 3, 5…… 4번이 없다.', '맨 아래 구석 칸이 13번이다. 네 자리 번호 자물쇠가 달려 있다.');
+  else await say('번호를 훑어본다. 1, 2, 3, 5…… 4번이 없다.', '다른 칸은 전부 비어 있는데, 맨 아래 구석 13번 칸에만 네 자리 번호 자물쇠가 달려 있다.');
+  let code = '';
+  const p = overlay(`<div class="keypad"><div class="num">${tr('보관함 13')}</div><div class="disp" id="disp"></div><div class="keys">${[1,2,3,4,5,6,7,8,9,'지움',0,'확인'].map(k => `<button data-k="${k}">${tr(String(k))}</button>`).join('')}</div></div>`);
+  $('#ovBody').onclick = e => { const k = e.target.dataset?.k; if (k == null) return; sfx.key();
+    if (k === '지움') code = code.slice(0, -1); else if (k === '확인') { if (code === '0417') return closeOv('ok'); sfx.wrong(); code = ''; } else if (code.length < 4) code += k;
+    const d = $('#disp'); if (d) d.textContent = code; };
+  const r = await p; $('#ovBody').onclick = null;
+  if (r !== 'ok') return say(...(S.tap && S.sawPoster ? ['「내가 사라진 날」…… 전단에 날짜가 있었다.'] : S.tap ? ['「내가 사라진 날」…… 그게 언제인지 알아야 한다.', '승강장 게시판에 뭔가 붙어 있었던 것 같다.'] : S.sawNote ? ['번호를 모른다.', '역무실 메모대로라면 「그 애」가 알고 있다. 다른 곳을 더 둘러보자.'] : ['번호를 모른다.', '대합실 왼쪽 역무실 유리창에 뭔가 붙어 있었다. 그것부터 읽어 보자.']));
+  S.lockerOpen = true; sfx.open(); busy(true); await sleep(500);
+  const h = fxImg('hand', { left: '10%', top: '0%', width: '80%', height: '100%', objectFit: 'cover', opacity: 0, transition: 'opacity .05s, transform .25s', transform: 'scale(.6)' });
+  $('#world').classList.add('dark'); await sleep(350); if (tame) sfx.thump(); else { h.style.opacity = 1; h.style.transform = 'scale(1.25)'; sfx.scream(); $('#stage').classList.add('shake'); }
+  await sleep(450); $('#stage').classList.remove('shake'); clearFx(); $('#world').classList.remove('dark'); busy(false);
+  S.key = S.tag = true; S.inv.push('key', 'tag'); render();
+  await say('……!!', '……아무것도 없다. 분명 손이 나왔는데.', '보관함 안에는 녹슨 열쇠와, 플라스틱 이름표가 놓여 있다.', '[셔터 열쇠]와 [이름표]를 얻었다.');
+  sfx.buzz(); phoneAlert(); await say('휴대폰이 울렸다.', '(왼쪽 위 가방에서 휴대폰을 꺼내 볼 수 있다.)');
+}
+async function tap() {
+  if (S.tap) return say('물은 저절로 잠겨 있다.', '거울에 김이 서려 있다.');
+  S.tap = true; sfx.water(); render();
+  await say('수도꼭지를 돌리자 뜨거운 물이 쏟아진다.', '거울에 김이 서린다.', '……김 위로 누군가 손가락으로 쓴 글씨가 떠오른다.', '「내가 사라진 날」');
+}
+async function mirror() {
+  S.mirror++;
+  if (S.mirror === 1) { await say('얼룩진 거울. 지친 내 얼굴이 비친다.', S.tap ? '김 서린 글씨: 「내가 사라진 날」' : '뒤쪽 칸막이 문이 전부 닫혀 있다.'); }
+  else if (S.mirror === 2) { busy(true); await sleep(1400); alt('restroom_g', .05); sfx.thump(); await sleep(380); altOff(.08); await sleep(500); busy(false);
+    await say('……방금 내 뒤에.', '돌아봤지만 아무도 없다.', '더는 거울을 보고 싶지 않다.'); }
+  else if (S.mirror === 3) { busy(true); $('#world').classList.add('dark'); await sleep(1800); sfx.whisper(); await sleep(1300);
+    await jumpscare(800); $('#world').classList.remove('dark'); await say('……헉, ……헉.', '거울 속에는 다시 내 얼굴뿐이다.'); }
+  else await say('보지 않는다.');
+}
+async function shutter() {
+  if (S.shutter) return say('셔터 뒤는 벽이다.', '여기로는 나갈 수 없다.');
+  if (!S.key) return say('철제 셔터가 바닥까지 내려와 있다.', '아래쪽에 열쇠 구멍이 있다. 열쇠가 필요하다.');
+  S.shutter = true; busy(true); sfx.shutter(); await sleep(1900);
+  await go('wall', true);
+  await say('열쇠를 돌리자 셔터가 덜컹거리며 올라간다.', '……계단이 없다.', '셔터 뒤는 콘크리트 벽이다.\n벽 가득, 손톱으로 긁은 자국이 나 있다.', '여기서 나가려던 사람이, 나만은 아니었던 모양이다.');
+  sfx.chime(); await sleep(1900);
+  await say('〈 지금, 무영, 무영역에…… 마지막 열차가 들어오고 있습니다. 〉', '〈 손님 여러분께서는…… 한 분도 빠짐없이…… 승차하여 주시기 바랍니다. 〉');
+  sfx.train(); $('#stage').classList.add('shake'); await sleep(900); $('#stage').classList.remove('shake');
+  S.trainHere = true; sfx.buzz();
+  await say('발밑에서 진동이 올라온다. 승강장에 열차가 들어왔다.', '휴대폰이 또 울린다.', '(가방에서 휴대폰을 꺼내 볼 수 있다.)'); phoneAlert();
+  go('concourse', true);
+}
+async function boardTrain() {
+  const c = await choose('문이 열려 있다. 안에는 아무도 없다. 탈까?', ['탄다', '타지 않는다']);
+  if (c === 1) return;
+  S.ride = 0; await go('train');
+  sfx.open(); await say('발을 들이자마자 등 뒤에서 문이 닫혔다.', '열차가 움직이기 시작한다.', '(화면을 눌러 주위를 살핀다)');
+}
+async function ride() {
+  S.ride++;
+  if (S.ride <= 3) { busy(true); $('#world').classList.add('dark'); sfx.thump(); await sleep(500); alt('train_g' + S.ride, 0); $('#world').classList.remove('dark'); await sleep(500); busy(false);
+    await say(['맨 끝 칸에 누가 서 있다.', '불이 깜빡인 사이, 가까워졌다.', '……바로 앞이다.'][S.ride - 1]); }
+  else { await badEnd('막차에는 종점이 없다', '〈 다음 역은, 무영, 무영역입니다. 〉'); S.ride = 0; go('platform', true); }
+}
+async function trueEnd() {
+  busy(true); sfx.key(); await overlayTimed(posterHtml(true), 2200);
+  await say('이름표를 전단의 지워진 자리에 꽂았다.', '「윤서하」.');
+  $('#world').classList.remove('flicker'); await sleep(200); alt('platform_g', 2.5); sfx.whisper(); await sleep(2600);
+  await say('승강장 끝에, 그 애가 서 있다.', '이번에는 다가오지 않는다.', '「……아무도, 내 이름을 안 불러 줬어.」', '「……고마워.」');
+  sfx.train(); S.trainHere = false; render(); altOff(2.5); await sleep(2600);
+  clearFx();
+  await say('열차는 문을 닫고, 그 애를 태운 채 터널 속으로 사라졌다.', '위쪽에서 셔터 올라가는 소리가 들린다.');
+  sfx.shutter(); await sleep(1200);
+  await go('exit_dawn', true); sfx.bell();
+  await say('이번에는 계단이 있었다.', '휴대폰 시계가 다시 움직이기 시작한다. 04:17.', '첫차가 다니기 전의, 조용한 새벽이었다.');
+  $('#endTitle').textContent = tr('막차 — 끝'); $('#endText').innerHTML = tr('플레이해 주셔서 감사합니다.'); $('#endBtn').textContent = tr('처음으로');
+  $('#end').classList.add('on', 'dawn'); busy(false);
+  const t = setTimeout(async () => { sfx.buzz(); $('#end').classList.remove('dawn'); $('#endText').innerHTML = '<span style="color:#c44">' + tr('새 메시지 · 발신자 표시 없음') + '</span><br><br>' + tr('「다음 막차에서 또 봐」'); await sleep(1500); await jumpscare(600); }, 7000);
+  $('#endBtn').onclick = () => { clearTimeout(t); location.reload(); };
+}
+async function overlayTimed(html, ms) { $('#ovBody').innerHTML = html; $('#ov').classList.add('on'); $('#ovClose').style.display = 'none'; await sleep(ms); $('#ov').classList.remove('on'); $('#ovClose').style.display = ''; $('#ovBody').innerHTML = ''; }
+
+/* ───────── 시작 ───────── */
+function showTame() { $('#btnTame').textContent = (tame ? '■' : '□') + ' ' + tr('순한 모드 (깜짝 장면·비명 끄기)'); }
+$('#btnTame').onclick = () => { tame = !tame; store.set('makcha_tame', tame ? '1' : '0'); showTame(); };
+showTame();
+document.querySelectorAll('#tLang button').forEach(b => b.onclick = () => { LANG = b.dataset.l; applyLang(); });
+applyLang();
+$('#btnStart').onclick = async () => {
+  if (ac) return; $('#btnStart').blur();
+  initAudio(); S = fresh(); render(); document.body.classList.add('playing');
+  $('#fade').classList.add('on'); $('#title').classList.remove('on'); sfx.train();
+  await sleep(1600); $('#fade').classList.remove('on'); await sleep(500);
+  intro();
+};
+window.__game = { get S() { return S; }, go, render, jumpscare };
+</script>
+</body>
+</html>

@@ -200,12 +200,21 @@
 
   /* ───── 언어 ───── */
   .poster .tag { white-space: nowrap; }
+  #lang { gap: .9em; }
+  #lang button { margin-top: 0; width: 11em; }
+  #lang button.cur { border-color: #d8d4c8; color: #fff; }
+  #lang .rot, .tRot { display: none; }
+  @media (orientation: portrait) and (max-width: 700px) {
+    #lang .rot { display: block; margin-top: 1.4em; font-size: 13px; line-height: 1.8; color: #c9a227; }
+    #title .tRot { display: block; left: 7%; right: 7%; top: calc(var(--t) + 104vw); font-size: 13px; line-height: 1.5; color: #c9a227; }
+  }
   .tLang { position: absolute; left: 7%; top: 89%; display: flex; gap: 1.1em; }
   #title .tLang button { margin: 0; padding: 0; border: 0; background: none; color: #777; font-size: clamp(11px, 1.5vw, 14px); letter-spacing: 0; }
   #title .tLang button.cur { color: #fff; text-decoration: underline; }
   html[lang=en] body { font-family: Tahoma, Verdana, Geneva, sans-serif; }
   html[lang=ja] body { font-family: "MS PGothic", "MS Pゴシック", Osaka, "Hiragino Kaku Gothic ProN", Meiryo, sans-serif; }
-  html[lang=en] .tSub { writing-mode: horizontal-tb; right: 26%; top: 60%; max-width: 30%; text-align: right; font-family: Georgia, serif; }
+  html[lang=en] .tSub { writing-mode: horizontal-tb; right: auto; left: 7%; top: 63%; max-width: 50%; text-align: left; font-family: Georgia, serif; }
+  @media (orientation: landscape) { #title .tVer { left: 7%; top: 3%; bottom: auto; } }
   html[lang=en] #mirrorText, html[lang=ja] #mirrorText { letter-spacing: .08em; }
   html[lang=ja] .tSub, html[lang=ja] #end h2 { font-family: "Hiragino Mincho ProN", "MS PMincho", "Yu Mincho", serif; }
   html[lang=en] #end h2 { font-family: Georgia, "Times New Roman", serif; }
@@ -255,7 +264,16 @@
     <button id="btnTame" class="tOpt"></button>
     <div id="tLang" class="tLang"><button data-l="ko">한국어</button><button data-l="en">English</button><button data-l="ja">日本語</button></div>
     <div class="tWarn">※ 경고 ※<br>갑자기 놀라는 장면과 큰 소리가 나옵니다.<br>심장이 약하신 분, 임산부, 노약자는 하지 마세요.<br>스피커를 켜고 불을 끄고 하세요.</div>
+    <div class="tRot"></div>
     <div class="tVer">ver 1.0</div>
+  </div>
+
+  <div id="lang" class="screen on">
+    <p>LANGUAGE · 언어 · 言語</p>
+    <button data-l="ko">한국어</button>
+    <button data-l="en">English</button>
+    <button data-l="ja">日本語</button>
+    <p class="rot">↻ 휴대폰은 가로로 돌려 주세요<br>Phone? Rotate it sideways<br>スマホは横向きがおすすめ</p>
   </div>
 </div>
 
@@ -275,10 +293,11 @@ const TR = {
   // 타이틀 · 버튼
   '눈을 떠 보니 노선도에 없는 역이었다': ['I woke up at a station that isn\'t on the map', '目を覚ますと、路線図にない駅だった'],
   '▶ 게임시작': ['▶ START', '▶ ゲームスタート'],
-  '순한 모드 (깜짝 장면·비명 끄기)': ['Mild mode (no jump scares or screams)', 'マイルドモード（びっくり演出・悲鳴オフ）'],
+  '순한 모드 (깜짝 장면·비명 끄기)': ['Mild mode (no jump scares or screams)', 'マイルドモード（驚かし・悲鳴オフ）'],
   '※ 경고 ※<br>갑자기 놀라는 장면과 큰 소리가 나옵니다.<br>심장이 약하신 분, 임산부, 노약자는 하지 마세요.<br>스피커를 켜고 불을 끄고 하세요.': [
     '※ WARNING ※<br>Contains sudden jump scares and loud noises.<br>Not for those with heart conditions or who are easily frightened.<br>Turn your sound on. Turn the lights off.',
     '※ 警告 ※<br>突然驚かす演出と大きな音があります。<br>心臓の弱い方、妊娠中の方はご遠慮ください。<br>音を出して、部屋を暗くしてお楽しみください。'],
+  '휴대폰은 가로로 돌려서 하는 것을 추천합니다.': ['On a phone? Rotate it sideways for the best experience.', 'スマホの方は、横向きでのプレイをおすすめします。'],
   '가방': ['Bag', 'かばん'], '힌트': ['Hint', 'ヒント'], '소리 끄기': ['Mute', '音を消す'], '소리 켜기': ['Unmute', '音を出す'], '전체화면': ['Fullscreen', '全画面'], '닫기': ['Close', '閉じる'],
   '가방 — 눌러서 확인': ['Bag — tap to look', 'かばん — 押して確認'], '비어 있음': ['Empty', '空っぽ'],
   '돌아가기': ['Back', '戻る'], '직전으로 돌아가기': ['Go back a moment', '直前に戻る'], '처음으로': ['Back to title', 'タイトルへ'],
@@ -299,7 +318,7 @@ const TR = {
   '위층으로 올라가 본다': ['Try going upstairs', '上の階に行ってみる'],
   '나갈 방법을 찾는다': ['Find a way out', '外に出る方法を探す'],
   '보관함 13번의 비밀번호를 알아낸다': ['Find the code for locker 13', 'ロッカー13番の暗証番号を突き止める'],
-  '「내가 사라진 날」이 언제인지 알아낸다': ['Find out when "the day I vanished" was', '「わたしが消えた日」がいつなのか突き止める'],
+  '「내가 사라진 날」이 언제인지 알아낸다': ['Find out when "the day I vanished" was', '「わたしが消えた日」を突き止める'],
   '보관함 13번을 연다': ['Open locker 13', 'ロッカー13番を開ける'],
   '열쇠를 쓸 곳을 찾는다': ['Find where the key goes', '鍵を使う場所を探す'],
   '휴대폰이 울렸다': ['Your phone buzzed', '携帯が鳴った'],
@@ -481,7 +500,7 @@ const TR = {
   '「다음 막차에서 또 봐」': ['"see you on the next last train"', '「次の終電で、また会おうね」'],
 };
 const LANGS = ['ko', 'en', 'ja'];
-let LANG = new URLSearchParams(location.search).get('lang') || store.get('makcha_lang') || (navigator.language || 'en').slice(0, 2);
+let LANG = store.get('makcha_lang') || (navigator.language || 'en').slice(0, 2);
 if (!LANGS.includes(LANG)) LANG = 'en';
 const tr = s => { const i = LANGS.indexOf(LANG) - 1, e = TR[s]; return i < 0 || !e ? s : e[i]; };
 const locName = n => n.startsWith('무영역 · ') ? tr('무영역') + ' · ' + tr(n.slice(6)) : n;
@@ -491,7 +510,8 @@ function applyLang() {
   $('.tSub').textContent = tr('눈을 떠 보니 노선도에 없는 역이었다'); $('#btnStart').textContent = tr('▶ 게임시작'); $('.tWarn').innerHTML = tr(WARN);
   $('#mirrorText').textContent = tr('내가 사라진 날'); $('#endBtn').textContent = tr('돌아가기');
   $('#btnBag').title = tr('가방'); $('#btnHint').title = tr('힌트'); $('#btnFull').title = tr('전체화면'); $('#ovClose').title = tr('닫기');
-  document.querySelectorAll('#tLang button').forEach(b => b.classList.toggle('cur', b.dataset.l === LANG));
+  document.querySelectorAll('#tLang button, #lang button').forEach(b => b.classList.toggle('cur', b.dataset.l === LANG));
+  $('.tRot').textContent = '↻ ' + tr('휴대폰은 가로로 돌려서 하는 것을 추천합니다.');
   showTame(); applyMute();
 }
 function initAudio() {
@@ -898,6 +918,7 @@ function showTame() { $('#btnTame').textContent = (tame ? '■' : '□') + ' ' +
 $('#btnTame').onclick = () => { tame = !tame; store.set('makcha_tame', tame ? '1' : '0'); showTame(); };
 showTame();
 document.querySelectorAll('#tLang button').forEach(b => b.onclick = () => { LANG = b.dataset.l; applyLang(); });
+document.querySelectorAll('#lang button').forEach(b => b.onclick = () => { LANG = b.dataset.l; applyLang(); $('#lang').classList.remove('on'); });
 applyLang();
 $('#btnStart').onclick = async () => {
   if (ac) return; $('#btnStart').blur();
